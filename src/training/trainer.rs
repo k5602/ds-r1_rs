@@ -25,11 +25,13 @@ impl BasicTrainer {
         // TODO: Implement in later tasks
         Ok(Self {})
     }
-    
+
     /// Perform a training step
     pub fn train_step(&mut self, _batch: &TrainingBatch) -> Result<TrainingMetrics> {
         // TODO: Implement in later tasks
-        Err(ModelError::Training("Basic trainer not implemented yet".to_string()))
+        Err(ModelError::Training(
+            "Basic trainer not implemented yet".to_string(),
+        ))
     }
 }
 
@@ -44,18 +46,20 @@ impl RLTrainer {
         // TODO: Implement in later tasks
         Ok(Self {})
     }
-    
+
     /// Perform an RL training step
     pub fn train_step(&mut self, _batch: &TrainingBatch) -> Result<TrainingMetrics> {
         // TODO: Implement in later tasks
-        Err(ModelError::Training("RL trainer not implemented yet".to_string()))
+        Err(ModelError::Training(
+            "RL trainer not implemented yet".to_string(),
+        ))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ModelConfig, DeepSeekR1Model};
+    use crate::model::{DeepSeekR1Model, ModelConfig};
 
     #[test]
     fn test_basic_trainer_creation() {

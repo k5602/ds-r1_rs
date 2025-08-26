@@ -4,26 +4,17 @@
 //! This library provides core components for transformer architecture, multi-head
 //! latent attention (MLA), mixture-of-experts (MoE), and reasoning capabilities.
 
+pub mod inference;
 pub mod model;
 pub mod training;
-pub mod inference;
 pub mod utils;
 
 // Re-export commonly used types and functions
-pub use model::{
-    config::ModelConfig,
-    transformer::DeepSeekR1Model,
-};
+pub use model::{config::ModelConfig, transformer::DeepSeekR1Model};
 
-pub use inference::{
-    engine::InferenceEngine,
-    reasoning::ReasoningOutput,
-};
+pub use inference::{engine::InferenceEngine, reasoning::ReasoningOutput};
 
-pub use training::{
-    trainer::BasicTrainer,
-    data::TrainingExample,
-};
+pub use training::{data::TrainingExample, trainer::BasicTrainer};
 
 pub use utils::{
     error::{ModelError, Result},

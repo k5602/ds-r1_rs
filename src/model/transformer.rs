@@ -15,17 +15,15 @@ impl DeepSeekR1Model {
     /// Create a new model with the given configuration
     pub fn new(config: ModelConfig) -> Result<Self> {
         config.validate()?;
-        
-        Ok(Self {
-            config,
-        })
+
+        Ok(Self { config })
     }
-    
+
     /// Get the model configuration
     pub fn config(&self) -> &ModelConfig {
         &self.config
     }
-    
+
     /// Forward pass through the model
     pub fn forward(&mut self, _input_ids: &[u32]) -> Result<Vec<f32>> {
         // TODO: Implement in later tasks

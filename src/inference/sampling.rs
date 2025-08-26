@@ -34,23 +34,29 @@ impl Sampler {
     pub fn new(config: SamplingConfig) -> Self {
         Self { config }
     }
-    
+
     /// Sample next token using greedy decoding
     pub fn sample_greedy(&self, _logits: &[f32]) -> Result<u32> {
         // TODO: Implement in later tasks
-        Err(ModelError::Forward("Greedy sampling not implemented yet".to_string()))
+        Err(ModelError::Forward(
+            "Greedy sampling not implemented yet".to_string(),
+        ))
     }
-    
+
     /// Sample next token using temperature sampling
     pub fn sample_temperature(&self, _logits: &[f32]) -> Result<u32> {
         // TODO: Implement in later tasks
-        Err(ModelError::Forward("Temperature sampling not implemented yet".to_string()))
+        Err(ModelError::Forward(
+            "Temperature sampling not implemented yet".to_string(),
+        ))
     }
-    
+
     /// Sample next token using top-k sampling
     pub fn sample_top_k(&self, _logits: &[f32]) -> Result<u32> {
         // TODO: Implement in later tasks
-        Err(ModelError::Forward("Top-k sampling not implemented yet".to_string()))
+        Err(ModelError::Forward(
+            "Top-k sampling not implemented yet".to_string(),
+        ))
     }
 }
 

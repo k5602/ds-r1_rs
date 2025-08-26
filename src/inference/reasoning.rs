@@ -32,17 +32,17 @@ impl ReasoningOutput {
             confidence: 1.0, // Default confidence
         }
     }
-    
+
     /// Set confidence score
     pub fn with_confidence(mut self, confidence: f32) -> Self {
         self.confidence = confidence.clamp(0.0, 1.0);
         self
     }
-    
+
     /// Get formatted output with reasoning
     pub fn format_output(&self) -> String {
         let mut output = String::new();
-        
+
         if !self.thinking_chain.is_empty() {
             output.push_str("Reasoning:\n");
             for (i, step) in self.thinking_chain.iter().enumerate() {
@@ -50,7 +50,7 @@ impl ReasoningOutput {
             }
             output.push('\n');
         }
-        
+
         output.push_str(&format!("Answer: {}", self.final_answer));
         output
     }
@@ -66,7 +66,7 @@ impl ReasoningEngine {
     pub fn new(_think_start_token: u32, _think_end_token: u32) -> Self {
         Self {}
     }
-    
+
     /// Parse reasoning chain from generated text
     pub fn parse_reasoning(&self, _text: &str) -> ReasoningOutput {
         // TODO: Implement in later tasks
@@ -75,7 +75,7 @@ impl ReasoningEngine {
             "Placeholder answer".to_string(),
         )
     }
-    
+
     /// Check if currently in thinking mode
     pub fn is_thinking(&self, _current_state: &ReasoningState) -> bool {
         // TODO: Implement in later tasks
@@ -94,7 +94,7 @@ mod tests {
             "Then I'll solve it step by step".to_string(),
         ];
         let answer = "The answer is 42".to_string();
-        
+
         let output = ReasoningOutput::new(thinking.clone(), answer.clone());
         assert_eq!(output.thinking_chain, thinking);
         assert_eq!(output.final_answer, answer);
@@ -104,8 +104,7 @@ mod tests {
 
     #[test]
     fn test_reasoning_output_with_confidence() {
-        let output = ReasoningOutput::new(vec![], "Answer".to_string())
-            .with_confidence(0.8);
+        let output = ReasoningOutput::new(vec![], "Answer".to_string()).with_confidence(0.8);
         assert_eq!(output.confidence, 0.8);
     }
 
@@ -114,7 +113,7 @@ mod tests {
         let thinking = vec!["Step 1".to_string(), "Step 2".to_string()];
         let output = ReasoningOutput::new(thinking, "Final answer".to_string());
         let formatted = output.format_output();
-        
+
         assert!(formatted.contains("Reasoning:"));
         assert!(formatted.contains("1. Step 1"));
         assert!(formatted.contains("2. Step 2"));

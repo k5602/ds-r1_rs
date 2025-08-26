@@ -32,7 +32,7 @@ impl TrainingExample {
             problem_type,
         }
     }
-    
+
     /// Create a training example with reasoning chain
     pub fn with_reasoning(
         input: String,
@@ -65,17 +65,17 @@ impl TrainingBatch {
             batch_size,
         }
     }
-    
+
     /// Split examples by problem type
     pub fn split_by_type(&self) -> std::collections::HashMap<ProblemType, Vec<&TrainingExample>> {
         let mut map = std::collections::HashMap::new();
-        
+
         for example in &self.examples {
             map.entry(example.problem_type.clone())
                 .or_insert_with(Vec::new)
                 .push(example);
         }
-        
+
         map
     }
 }
@@ -86,12 +86,9 @@ mod tests {
 
     #[test]
     fn test_training_example_creation() {
-        let example = TrainingExample::new(
-            "2 + 2 = ?".to_string(),
-            "4".to_string(),
-            ProblemType::Math,
-        );
-        
+        let example =
+            TrainingExample::new("2 + 2 = ?".to_string(), "4".to_string(), ProblemType::Math);
+
         assert_eq!(example.input, "2 + 2 = ?");
         assert_eq!(example.target, "4");
         assert!(matches!(example.problem_type, ProblemType::Math));
@@ -100,18 +97,15 @@ mod tests {
 
     #[test]
     fn test_training_example_with_reasoning() {
-        let reasoning = vec![
-            "I need to add 2 and 2".to_string(),
-            "2 + 2 = 4".to_string(),
-        ];
-        
+        let reasoning = vec!["I need to add 2 and 2".to_string(), "2 + 2 = 4".to_string()];
+
         let example = TrainingExample::with_reasoning(
             "2 + 2 = ?".to_string(),
             "4".to_string(),
             reasoning.clone(),
             ProblemType::Math,
         );
-        
+
         assert_eq!(example.reasoning_chain, Some(reasoning));
     }
 
@@ -121,10 +115,10 @@ mod tests {
             TrainingExample::new("2 + 2".to_string(), "4".to_string(), ProblemType::Math),
             TrainingExample::new("3 * 3".to_string(), "9".to_string(), ProblemType::Math),
         ];
-        
+
         let batch = TrainingBatch::new(examples);
         assert_eq!(batch.batch_size, 2);
-        
+
         let by_type = batch.split_by_type();
         assert_eq!(by_type.len(), 1);
         assert!(by_type.contains_key(&ProblemType::Math));

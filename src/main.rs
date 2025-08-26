@@ -1,12 +1,12 @@
-use ds_r1_rs::{ModelConfig, DeepSeekR1Model, InferenceEngine};
+use ds_r1_rs::{DeepSeekR1Model, InferenceEngine, ModelConfig};
 use std::env;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
     env_logger::init();
-    
+
     let args: Vec<String> = env::args().collect();
-    
+
     if args.len() < 2 {
         println!("🧠 DeepSeek R1 Rust Implementation");
         println!("A prototype implementation of DeepSeek R1-inspired reasoning model in Rust");
@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Made with insistence by khaled");
         return Ok(());
     }
-    
+
     match args[1].as_str() {
         "config" => {
             let config = ModelConfig::default();
@@ -48,7 +48,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("  • KV compression ratio: {}", config.kv_compression_ratio);
             println!("  • RoPE theta: {}", config.rope_theta);
             println!("  • Head dimension: {}", config.head_dim());
-            println!("  • Compressed KV dimension: {}", config.compressed_kv_dim());
+            println!(
+                "  • Compressed KV dimension: {}",
+                config.compressed_kv_dim()
+            );
             println!();
             println!("Mixture of Experts (MoE):");
             println!("  • Number of experts: {}", config.num_experts);
@@ -81,7 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "test" => {
             println!("🧪 Running Basic Functionality Tests");
             println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            
+
             // Test configuration
             print!("Testing configuration system... ");
             let config = ModelConfig::default();
@@ -92,7 +95,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return Err(e.into());
                 }
             }
-            
+
             // Test model creation
             print!("Testing model creation... ");
             match DeepSeekR1Model::new(config.clone()) {
@@ -102,7 +105,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return Err(e.into());
                 }
             }
-            
+
             // Test configuration serialization
             print!("Testing config serialization... ");
             match serde_json::to_string(&config) {
@@ -112,7 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return Err(e.into());
                 }
             }
-            
+
             println!();
             println!("🎉 All basic functionality tests passed!");
             println!("The project foundation is ready for implementing model components.");
@@ -122,6 +125,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Use 'config', 'version', or 'test'");
         }
     }
-    
+
     Ok(())
 }

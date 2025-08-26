@@ -52,7 +52,9 @@ impl Default for CrossEntropyLoss {
 impl LossFunction for CrossEntropyLoss {
     fn compute_loss(&self, _predictions: &[f32], _targets: &[f32]) -> Result<f32> {
         // TODO: Implement in later tasks
-        Err(ModelError::Training("Cross-entropy loss not implemented yet".to_string()))
+        Err(ModelError::Training(
+            "Cross-entropy loss not implemented yet".to_string(),
+        ))
     }
 }
 

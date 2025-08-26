@@ -2,8 +2,8 @@
 //!
 //! Main inference engine for text generation and reasoning.
 
-use crate::model::DeepSeekR1Model;
 use crate::inference::reasoning::ReasoningOutput;
+use crate::model::DeepSeekR1Model;
 use crate::utils::error::{ModelError, Result};
 
 /// Main inference engine
@@ -17,30 +17,36 @@ impl InferenceEngine {
         // TODO: Implement in later tasks
         Ok(Self {})
     }
-    
+
     /// Generate text from a prompt
     pub fn generate_text(&mut self, _prompt: &str) -> Result<String> {
         // TODO: Implement in later tasks
-        Err(ModelError::Forward("Text generation not implemented yet".to_string()))
+        Err(ModelError::Forward(
+            "Text generation not implemented yet".to_string(),
+        ))
     }
-    
+
     /// Solve a mathematical problem with reasoning
     pub fn solve_math_problem(&mut self, _problem: &str) -> Result<ReasoningOutput> {
         // TODO: Implement in later tasks
-        Err(ModelError::Forward("Math problem solving not implemented yet".to_string()))
+        Err(ModelError::Forward(
+            "Math problem solving not implemented yet".to_string(),
+        ))
     }
-    
+
     /// Explain code with reasoning
     pub fn explain_code(&mut self, _code: &str) -> Result<ReasoningOutput> {
         // TODO: Implement in later tasks
-        Err(ModelError::Forward("Code explanation not implemented yet".to_string()))
+        Err(ModelError::Forward(
+            "Code explanation not implemented yet".to_string(),
+        ))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ModelConfig, DeepSeekR1Model};
+    use crate::model::{DeepSeekR1Model, ModelConfig};
 
     #[test]
     fn test_inference_engine_creation() {

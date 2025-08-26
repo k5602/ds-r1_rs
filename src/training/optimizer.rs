@@ -37,11 +37,13 @@ impl Optimizer {
         // TODO: Implement in later tasks
         Ok(Self {})
     }
-    
+
     /// Perform optimization step
     pub fn step(&mut self, _gradients: &[f32]) -> Result<()> {
         // TODO: Implement in later tasks
-        Err(ModelError::Training("Optimizer not implemented yet".to_string()))
+        Err(ModelError::Training(
+            "Optimizer not implemented yet".to_string(),
+        ))
     }
 }
 

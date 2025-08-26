@@ -56,13 +56,13 @@ impl GenerationOutput {
             generation_time_ms: 0,
         }
     }
-    
+
     /// Set generation time
     pub fn with_time(mut self, time_ms: u64) -> Self {
         self.generation_time_ms = time_ms;
         self
     }
-    
+
     /// Check if generation was successful
     pub fn is_success(&self) -> bool {
         !matches!(self.stop_reason, StopReason::Error(_))
@@ -83,12 +83,8 @@ mod tests {
 
     #[test]
     fn test_generation_output() {
-        let output = GenerationOutput::new(
-            "Hello world".to_string(),
-            2,
-            StopReason::MaxTokens,
-        );
-        
+        let output = GenerationOutput::new("Hello world".to_string(), 2, StopReason::MaxTokens);
+
         assert_eq!(output.text, "Hello world");
         assert_eq!(output.tokens_generated, 2);
         assert!(output.is_success());
@@ -96,12 +92,9 @@ mod tests {
 
     #[test]
     fn test_generation_output_with_time() {
-        let output = GenerationOutput::new(
-            "Test".to_string(),
-            1,
-            StopReason::EndOfSequence,
-        ).with_time(100);
-        
+        let output =
+            GenerationOutput::new("Test".to_string(), 1, StopReason::EndOfSequence).with_time(100);
+
         assert_eq!(output.generation_time_ms, 100);
     }
 
@@ -112,7 +105,7 @@ mod tests {
             0,
             StopReason::Error("Test error".to_string()),
         );
-        
+
         assert!(!output.is_success());
     }
 }

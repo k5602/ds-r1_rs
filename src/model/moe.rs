@@ -15,11 +15,13 @@ impl Expert {
         // TODO: Implement in later tasks
         Ok(Self {})
     }
-    
+
     /// Forward pass through expert
     pub fn forward(&mut self, _input: &[f32]) -> Result<Vec<f32>> {
         // TODO: Implement in later tasks
-        Err(ModelError::Forward("Expert not implemented yet".to_string()))
+        Err(ModelError::Forward(
+            "Expert not implemented yet".to_string(),
+        ))
     }
 }
 
@@ -30,15 +32,21 @@ pub struct MoELayer {
 
 impl MoELayer {
     /// Create a new MoE layer
-    pub fn new(_hidden_size: usize, _num_experts: usize, _experts_per_token: usize) -> Result<Self> {
+    pub fn new(
+        _hidden_size: usize,
+        _num_experts: usize,
+        _experts_per_token: usize,
+    ) -> Result<Self> {
         // TODO: Implement in later tasks
         Ok(Self {})
     }
-    
+
     /// Forward pass through MoE layer
     pub fn forward(&mut self, _input: &[f32]) -> Result<Vec<f32>> {
         // TODO: Implement in later tasks
-        Err(ModelError::Forward("MoE layer not implemented yet".to_string()))
+        Err(ModelError::Forward(
+            "MoE layer not implemented yet".to_string(),
+        ))
     }
 }
 
