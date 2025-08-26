@@ -4,7 +4,6 @@
 
 use crate::model::attention::Linear;
 use crate::utils::error::{ModelError, Result};
-use rand::Rng;
 
 /// Individual expert network implementing a specialized MLP with SwiGLU activation
 /// Each expert consists of three linear projections: gate, up, and down
@@ -911,14 +910,14 @@ mod tests {
 
     #[test]
     fn test_moe_creation() {
-        let moe = MoELayer::new(512, 8, 2);
+        let moe = MoELayer::new(32, 8, 2);
         assert!(moe.is_ok());
 
         let moe = moe.unwrap();
-        assert_eq!(moe.hidden_size(), 512);
+        assert_eq!(moe.hidden_size(), 32);
         assert_eq!(moe.num_experts(), 8);
         assert_eq!(moe.experts_per_token(), 2);
-        assert_eq!(moe.intermediate_size(), 512 * 4); // Default 4x expansion
+        assert_eq!(moe.intermediate_size(), 32 * 4); // Default 4x expansion
     }
 
     #[test]
@@ -1045,7 +1044,7 @@ mod tests {
 
     #[test]
     fn test_moe_different_inputs_different_routing() {
-        let mut moe = MoELayer::new(8, 4, 2).unwrap();
+        let moe = MoELayer::new(8, 4, 1).unwrap();
 
         let input1 = vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
         let input2 = vec![0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0];
@@ -1059,8 +1058,8 @@ mod tests {
         let experts2: Vec<usize> = active2.iter().map(|(idx, _)| *idx).collect();
 
         // At least check that the routing system is working
-        assert_eq!(experts1.len(), 2);
-        assert_eq!(experts2.len(), 2);
+        assert_eq!(experts1.len(), moe.experts_per_token());
+        assert_eq!(experts2.len(), moe.experts_per_token());
     }
 
     #[test]
@@ -1133,11 +1132,11 @@ mod tests {
 
     #[test]
     fn test_moe_weight_normalization() {
-        let mut moe = MoELayer::new(8, 6, 3).unwrap();
-        let input = vec![0.5; 8];
+        let moe = MoELayer::new(8, 6, 3).unwrap();
+        let input = vec![0.5; moe.hidden_size()];
 
         let active_experts = moe.get_active_experts(&input).unwrap();
-        assert_eq!(active_experts.len(), 3);
+        assert_eq!(active_experts.len(), moe.experts_per_token());
 
         // Weights should sum to 1.0
         let weight_sum: f32 = active_experts.iter().map(|(_, weight)| weight).sum();

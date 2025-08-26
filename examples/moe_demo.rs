@@ -206,7 +206,7 @@ fn demonstrate_expert_specialization(moe: &mut MoELayer) -> Result<()> {
             break;
         }
 
-        for (i, ((exp1, w1), (exp2, w2))) in first_routing.iter().zip(routing.iter()).enumerate() {
+        for ((exp1, w1), (exp2, w2)) in first_routing.iter().zip(routing.iter()) {
             if exp1 != exp2 || (w1 - w2).abs() > 1e-6 {
                 consistent = false;
                 break;
