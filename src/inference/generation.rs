@@ -5,6 +5,7 @@
 use crate::inference::reasoning::{ReasoningOutput, TokenReasoningProcessor};
 use crate::inference::sampling::{Sampler, SamplingConfig};
 use crate::model::DeepSeekR1Model;
+use crate::model::transformer::ModelKVCache;
 use crate::utils::error::{ModelError, Result};
 use crate::utils::tokenizer::Tokenizer;
 use serde::{Deserialize, Serialize};
@@ -41,6 +42,7 @@ pub struct GenerationOutput {
     pub tokens_generated: usize,
     pub stop_reason: StopReason,
     pub generation_time_ms: u64,
+    pub tokens_per_second: f32,
 }
 
 /// Reason why generation stopped
@@ -60,12 +62,23 @@ impl GenerationOutput {
             tokens_generated,
             stop_reason,
             generation_time_ms: 0,
+            tokens_per_second: 0.0,
         }
     }
 
     /// Set generation time
     pub fn with_time(mut self, time_ms: u64) -> Self {
         self.generation_time_ms = time_ms;
+        let secs = if time_ms > 0 {
+            (time_ms as f32) / 1000.0
+        } else {
+            0.0
+        };
+        self.tokens_per_second = if secs > 0.0 {
+            self.tokens_generated as f32 / secs
+        } else {
+            0.0
+        };
         self
     }
 
@@ -107,7 +120,7 @@ impl TextGenerator {
         for _ in 0..config.max_tokens {
             // Forward pass through model
             let logits = model.forward(&token_ids)?;
-            
+
             // Get logits for the last position (next token prediction)
             let vocab_size = tokenizer.vocab_size();
             if logits.len() < vocab_size {
@@ -115,7 +128,7 @@ impl TextGenerator {
                     "Model output size doesn't match vocabulary size".to_string(),
                 ));
             }
-            
+
             let next_token_logits = &logits[logits.len() - vocab_size..];
 
             // Sample next token based on temperature
@@ -127,31 +140,29 @@ impl TextGenerator {
 
             // Check for stop conditions
             if config.stop_tokens.contains(&next_token) {
-                let generated_text = self.decode_generated_tokens(
-                    tokenizer,
-                    &token_ids[original_length..],
-                )?;
+                let generated_text =
+                    self.decode_generated_tokens(tokenizer, &token_ids[original_length..])?;
                 let elapsed = start_time.elapsed().as_millis() as u64;
                 return Ok(GenerationOutput::new(
                     generated_text,
                     tokens_generated,
                     StopReason::StopToken,
-                ).with_time(elapsed));
+                )
+                .with_time(elapsed));
             }
 
             // Check for EOS token
             if let Ok(eos_id) = tokenizer.eos_token_id() {
                 if next_token == eos_id {
-                    let generated_text = self.decode_generated_tokens(
-                        tokenizer,
-                        &token_ids[original_length..],
-                    )?;
+                    let generated_text =
+                        self.decode_generated_tokens(tokenizer, &token_ids[original_length..])?;
                     let elapsed = start_time.elapsed().as_millis() as u64;
                     return Ok(GenerationOutput::new(
                         generated_text,
                         tokens_generated,
                         StopReason::EndOfSequence,
-                    ).with_time(elapsed));
+                    )
+                    .with_time(elapsed));
                 }
             }
 
@@ -161,16 +172,13 @@ impl TextGenerator {
         }
 
         // Reached max tokens
-        let generated_text = self.decode_generated_tokens(
-            tokenizer,
-            &token_ids[original_length..],
-        )?;
+        let generated_text =
+            self.decode_generated_tokens(tokenizer, &token_ids[original_length..])?;
         let elapsed = start_time.elapsed().as_millis() as u64;
-        Ok(GenerationOutput::new(
-            generated_text,
-            tokens_generated,
-            StopReason::MaxTokens,
-        ).with_time(elapsed))
+        Ok(
+            GenerationOutput::new(generated_text, tokens_generated, StopReason::MaxTokens)
+                .with_time(elapsed),
+        )
     }
 
     /// Generate text with caching for efficiency
@@ -182,9 +190,76 @@ impl TextGenerator {
         config: &GenerationConfig,
         _cache: &mut GenerationCache,
     ) -> Result<GenerationOutput> {
-        // For now, just call the regular generate method
-        // TODO: Implement proper KV caching in future iterations
-        self.generate(model, tokenizer, prompt, config)
+        let start_time = Instant::now();
+
+        // Encode and prime model cache for true incremental decoding
+        let prompt_tokens = tokenizer.encode(prompt)?;
+
+        if _cache.model_cache.is_none() {
+            _cache.model_cache = Some(ModelKVCache::new(model));
+            _cache.primed = true;
+        }
+        let model_cache = _cache.model_cache.as_mut().unwrap();
+
+        // Reset cache to the new prompt
+        model_cache.clear();
+
+        // Prime KV caches with all prompt tokens except the last one.
+        // The generation loop will feed the last token to produce logits for the next token.
+        if !prompt_tokens.is_empty() {
+            let prime_len = prompt_tokens.len().saturating_sub(1);
+            for &tok in &prompt_tokens[..prime_len] {
+                let _ = model.forward_next(model_cache, tok)?;
+            }
+        }
+
+        // Determine starting token (last prompt token or BOS)
+        let mut last_token = if let Some(&t) = prompt_tokens.last() {
+            t
+        } else {
+            tokenizer.bos_token_id().unwrap_or(0)
+        };
+
+        let mut generated: Vec<u32> = Vec::new();
+        let mut stop_reason = StopReason::MaxTokens;
+
+        for _ in 0..config.max_tokens {
+            // True incremental: use forward_next with KV cache and the last token
+            let logits = model.forward_next(model_cache, last_token)?;
+
+            // Sample next token from logits
+            let next_token = if config.temperature <= 0.0 {
+                self.sampler.sample_greedy(&logits)?
+            } else {
+                self.sampler.sample_temperature(&logits)?
+            };
+
+            // Stop-token handling: do not include stop token in the output
+            if config.stop_tokens.contains(&next_token) {
+                stop_reason = StopReason::StopToken;
+                break;
+            }
+
+            // EOS handling: do not include EOS in the output
+            if let Ok(eos_id) = tokenizer.eos_token_id() {
+                if next_token == eos_id {
+                    stop_reason = StopReason::EndOfSequence;
+                    break;
+                }
+            }
+
+            // Accept next token and continue
+            generated.push(next_token);
+            last_token = next_token;
+        }
+
+        let generated_text = tokenizer.decode(&generated)?;
+        let elapsed = start_time.elapsed().as_millis() as u64;
+        let out =
+            GenerationOutput::new(generated_text, generated.len(), stop_reason).with_time(elapsed);
+        _cache.total_generated_tokens += generated.len();
+        _cache.total_time_ms += elapsed;
+        Ok(out)
     }
 
     /// Generate text with reasoning awareness
@@ -213,7 +288,7 @@ impl TextGenerator {
         for _ in 0..config.max_tokens {
             // Forward pass through model
             let logits = model.forward(&token_ids)?;
-            
+
             // Get logits for the last position (next token prediction)
             let vocab_size = tokenizer.vocab_size();
             if logits.len() < vocab_size {
@@ -221,7 +296,7 @@ impl TextGenerator {
                     "Model output size doesn't match vocabulary size".to_string(),
                 ));
             }
-            
+
             let next_token_logits = &logits[logits.len() - vocab_size..];
 
             // Sample next token
@@ -233,7 +308,7 @@ impl TextGenerator {
 
             // Decode token for reasoning processor
             let token_text = tokenizer.decode(&[next_token])?;
-            
+
             // Process token with reasoning engine
             reasoning_processor.process_generation_token(next_token, &token_text)?;
 
@@ -268,22 +343,24 @@ impl TextGenerator {
     ) -> Result<(GenerationOutput, Option<ReasoningOutput>)> {
         // First generate normally
         let generation_output = self.generate(model, tokenizer, prompt, config)?;
-        
+
         // Check if the generated text contains thinking tokens
         let think_start_id = tokenizer.think_start_token_id()?;
         let think_end_id = tokenizer.think_end_token_id()?;
-        
-        if generation_output.text.contains("<think>") || generation_output.text.contains("</think>") {
+
+        if generation_output.text.contains("<think>") || generation_output.text.contains("</think>")
+        {
             // Parse reasoning from the generated text
-            let mut reasoning_processor = TokenReasoningProcessor::new(think_start_id, think_end_id);
-            
+            let mut reasoning_processor =
+                TokenReasoningProcessor::new(think_start_id, think_end_id);
+
             // Process the generated text token by token (simplified)
             let tokens = tokenizer.encode(&generation_output.text)?;
             for token_id in tokens {
                 let token_text = tokenizer.decode(&[token_id])?;
                 reasoning_processor.process_generation_token(token_id, &token_text)?;
             }
-            
+
             let reasoning_output = reasoning_processor.get_reasoning_output();
             Ok((generation_output, Some(reasoning_output)))
         } else {
@@ -303,7 +380,10 @@ impl TextGenerator {
         let reasoning_prompt = if prompt.contains("<think>") {
             prompt.to_string()
         } else {
-            format!("{} <think>Let me think about this step by step.</think>", prompt)
+            format!(
+                "{} <think>Let me think about this step by step.</think>",
+                prompt
+            )
         };
 
         self.generate_with_reasoning(model, tokenizer, &reasoning_prompt, config)
@@ -320,19 +400,29 @@ impl TextGenerator {
 
 /// Cache for generation state (placeholder for future KV caching)
 pub struct GenerationCache {
-    // TODO: Implement KV cache in future iterations
-    _placeholder: (),
+    pub model_cache: Option<ModelKVCache>,
+    pub primed: bool,
+    pub total_generated_tokens: usize,
+    pub total_time_ms: u64,
 }
 
 impl GenerationCache {
     /// Create a new generation cache
     pub fn new() -> Self {
-        Self { _placeholder: () }
+        Self {
+            model_cache: None,
+            primed: false,
+            total_generated_tokens: 0,
+            total_time_ms: 0,
+        }
     }
 
     /// Clear the cache
     pub fn clear(&mut self) {
-        // TODO: Implement cache clearing
+        self.model_cache = None;
+        self.primed = false;
+        self.total_generated_tokens = 0;
+        self.total_time_ms = 0;
     }
 }
 
@@ -394,9 +484,10 @@ mod tests {
     fn test_generation_cache() {
         let mut cache = GenerationCache::new();
         cache.clear(); // Should not panic
-        
+
         let default_cache = GenerationCache::default();
-        assert_eq!(std::mem::size_of_val(&default_cache), std::mem::size_of::<()>());
+        assert!(default_cache.model_cache.is_none());
+        assert_eq!(default_cache.total_generated_tokens, 0);
     }
 
     #[test]
@@ -423,9 +514,16 @@ mod tests {
         let gen_config = GenerationConfig::default();
 
         // These should not panic (though they may return errors due to unimplemented model)
-        let _result1 = generator.generate_with_reasoning(&mut model, &tokenizer, "test", &gen_config);
-        let _result2 = generator.generate_with_reasoning_detection(&mut model, &tokenizer, "test", &gen_config);
-        let _result3 = generator.generate_structured_reasoning(&mut model, &tokenizer, "test", &gen_config);
+        let _result1 =
+            generator.generate_with_reasoning(&mut model, &tokenizer, "test", &gen_config);
+        let _result2 = generator.generate_with_reasoning_detection(
+            &mut model,
+            &tokenizer,
+            "test",
+            &gen_config,
+        );
+        let _result3 =
+            generator.generate_structured_reasoning(&mut model, &tokenizer, "test", &gen_config);
     }
 
     // Note: Full generation testing requires a working model implementation

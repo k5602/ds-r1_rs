@@ -5,6 +5,20 @@
 use crate::utils::error::{ModelError, Result};
 use serde::{Deserialize, Serialize};
 
+/// Attention mechanism choice for transformer layers
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum AttentionType {
+    Standard,
+    MLA,
+}
+
+/// Feed-forward block choice for transformer layers
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FeedForwardType {
+    Dense,
+    MoE,
+}
+
 /// Main configuration for the DeepSeek R1 model
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelConfig {
@@ -15,6 +29,17 @@ pub struct ModelConfig {
     pub num_heads: usize,
     pub intermediate_size: usize,
     pub max_seq_len: usize,
+
+    // Architecture toggles
+    pub attention_type: AttentionType, // Standard | MLA
+    pub ff_type: FeedForwardType,      // Dense | MoE
+
+    // Mixed-depth periodic patterns (optional)
+    // When set, periodically replaces the default type:
+    // - MLA every `mla_every` layers (e.g., Some(3) -> every 3rd layer uses MLA)
+    // - MoE every `moe_every` layers (e.g., Some(4) -> every 4th layer uses MoE)
+    pub mla_every: Option<usize>,
+    pub moe_every: Option<usize>,
 
     // MLA specific parameters
     pub kv_compression_ratio: f32,
@@ -42,6 +67,14 @@ impl Default for ModelConfig {
             num_heads: 8,
             intermediate_size: 2048,
             max_seq_len: 2048,
+
+            // Architecture toggles
+            attention_type: AttentionType::Standard,
+            ff_type: FeedForwardType::Dense,
+
+            // Mixed-depth periodic patterns (disabled by default)
+            mla_every: None,
+            moe_every: None,
 
             // MLA configuration
             kv_compression_ratio: 0.5,
@@ -94,18 +127,41 @@ impl ModelConfig {
             ));
         }
 
+        // MLA compression ratio must be valid globally;
+        // when AttentionType::MLA is selected (or periodically enabled), enforce strict < 1.0
         if self.kv_compression_ratio <= 0.0 || self.kv_compression_ratio > 1.0 {
             return Err(ModelError::Config(
                 "kv_compression_ratio must be between 0 and 1".to_string(),
             ));
         }
+        if matches!(self.attention_type, AttentionType::MLA) && self.kv_compression_ratio >= 1.0 {
+            return Err(ModelError::Config(
+                "kv_compression_ratio must be < 1.0 when using MLA".to_string(),
+            ));
+        }
 
+        // Periodic patterns, if provided, must be >= 1
+        if let Some(n) = self.mla_every {
+            if n == 0 {
+                return Err(ModelError::Config(
+                    "mla_every must be >= 1 when specified".to_string(),
+                ));
+            }
+        }
+        if let Some(n) = self.moe_every {
+            if n == 0 {
+                return Err(ModelError::Config(
+                    "moe_every must be >= 1 when specified".to_string(),
+                ));
+            }
+        }
+
+        // MoE configuration sanity
         if self.num_experts == 0 {
             return Err(ModelError::Config(
                 "num_experts must be greater than 0".to_string(),
             ));
         }
-
         if self.experts_per_token == 0 || self.experts_per_token > self.num_experts {
             return Err(ModelError::Config(
                 "experts_per_token must be between 1 and num_experts".to_string(),

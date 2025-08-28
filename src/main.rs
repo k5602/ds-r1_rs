@@ -27,6 +27,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  generate  - Generate text from a prompt");
         println!("  eval      - Run reasoning benchmarks");
         println!("  train     - Run micro supervised training loop");
+        println!("  tokenize  - Encode text into token IDs");
+        println!("  detokenize - Decode token IDs into text");
         println!();
         println!("Examples:");
         println!("  cargo run -- config");
@@ -34,6 +36,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  cargo run -- generate \"Explain Rust ownership\"");
         println!("  cargo run -- eval");
         println!("  cargo run -- train --steps 50");
+        println!("  cargo run -- tokenize \"Hello <think>plan</think>\"");
+        println!("  cargo run -- detokenize 2,262,267,3");
         println!("  cargo run --example config_demo");
         println!();
         println!("For development:");
@@ -45,6 +49,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     match args[1].as_str() {
+        "tokenize" => {
+            if args.len() < 3 {
+                println!("Usage: {} tokenize <text>", args[0]);
+                return Ok(());
+            }
+            let text = args[2..].join(" ");
+            let tok = ds_r1_rs::utils::tokenizer::Tokenizer::new(
+                ds_r1_rs::utils::tokenizer::TokenizerConfig::default(),
+            )?;
+            let ids = tok.encode(&text)?;
+            let line = ids
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join(" ");
+            println!("{}", line);
+        }
+        "detokenize" => {
+            if args.len() < 3 {
+                println!("Usage: {} detokenize <ids...>", args[0]);
+                println!(
+                    "Example: {} detokenize 2 262 267 3  or  {} detokenize 2,262,267,3",
+                    args[0], args[0]
+                );
+                return Ok(());
+            }
+            let raw = args[2..].join(" ");
+            let mut ids: Vec<u32> = Vec::new();
+            for part in raw.split(|c: char| c.is_ascii_whitespace() || c == ',') {
+                let p = part.trim();
+                if p.is_empty() {
+                    continue;
+                }
+                match p.parse::<u32>() {
+                    Ok(v) => ids.push(v),
+                    Err(_) => {
+                        println!("Invalid token id: {}", p);
+                        return Ok(());
+                    }
+                }
+            }
+            let tok = ds_r1_rs::utils::tokenizer::Tokenizer::new(
+                ds_r1_rs::utils::tokenizer::TokenizerConfig::default(),
+            )?;
+            let text = tok.decode(&ids)?;
+            println!("{}", text);
+        }
         "config" => {
             let config = ModelConfig::default();
             println!("🔧 Default Model Configuration:");
@@ -56,6 +107,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("  • Number of heads: {}", config.num_heads);
             println!("  • Intermediate size: {}", config.intermediate_size);
             println!("  • Max sequence length: {}", config.max_seq_len);
+            println!("  • Attention type: {:?}", config.attention_type);
+            println!("  • Feed-forward type: {:?}", config.ff_type);
+            println!(
+                "  • MLA every: {}",
+                config
+                    .mla_every
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "—".to_string())
+            );
+            println!(
+                "  • MoE every: {}",
+                config
+                    .moe_every
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "—".to_string())
+            );
             println!();
             println!("Multi-head Latent Attention (MLA):");
             println!("  • KV compression ratio: {}", config.kv_compression_ratio);
@@ -142,10 +209,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let config = ModelConfig::default();
             let model = DeepSeekR1Model::new(config)?;
             let mut engine = InferenceEngine::new(model)?;
-            match engine.generate_text(&prompt) {
-                Ok(text) => {
+            let cfg = engine.generation_config().clone();
+            match engine.generate_text_with_config(&prompt, &cfg) {
+                Ok(output) => {
                     println!("Generated:");
-                    println!("{}", text);
+                    println!("{}", output.text);
+                    println!(
+                        "Tokens generated: {}  Time: {} ms  Tokens/sec: {:.2}",
+                        output.tokens_generated,
+                        output.generation_time_ms,
+                        output.tokens_per_second
+                    );
                 }
                 Err(e) => {
                     println!("Generation failed: {}", e);

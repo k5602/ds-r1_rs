@@ -2,8 +2,9 @@
 //!
 //! Main DeepSeek R1 model implementation with transformer layers.
 
-use crate::model::config::ModelConfig;
-use crate::model::layers::{LayerNorm, TransformerLayer};
+use crate::model::attention::StandardAttentionCache;
+use crate::model::config::{AttentionType, FeedForwardType, ModelConfig};
+use crate::model::layers::{AttentionKind, FeedForwardKind, LayerNorm, TransformerLayer};
 use crate::utils::error::{ModelError, Result};
 use rand::Rng;
 
@@ -150,20 +151,32 @@ impl DeepSeekR1Model {
         // Initialize embeddings
         let token_embedding = TrainableEmbedding::new(config.vocab_size, config.hidden_size)?;
 
-        // Build transformer layers
-        let mut layers = Vec::with_capacity(config.num_layers);
-        for _ in 0..config.num_layers {
-            let layer = TransformerLayer::new(
-                config.hidden_size,
-                config.num_heads,
-                config.intermediate_size,
-                config.max_seq_len,
-                config.rope_theta,
-                config.layer_norm_eps,
-                config.dropout_prob,
-            )?;
-            layers.push(layer);
-        }
+        // Build transformer layers via factory honoring attention/FF toggles and periodic patterns
+        let attention_default = match config.attention_type {
+            AttentionType::Standard => AttentionKind::Standard,
+            AttentionType::MLA => AttentionKind::MLA,
+        };
+        let ff_default = match config.ff_type {
+            FeedForwardType::Dense => FeedForwardKind::Dense,
+            FeedForwardType::MoE => FeedForwardKind::MoE,
+        };
+        let layers = TransformerLayer::build_layers_mixed(
+            config.num_layers,
+            config.hidden_size,
+            config.num_heads,
+            config.intermediate_size,
+            config.max_seq_len,
+            config.rope_theta,
+            config.layer_norm_eps,
+            config.dropout_prob,
+            attention_default,
+            ff_default,
+            config.mla_every,
+            config.moe_every,
+            config.kv_compression_ratio,
+            config.num_experts,
+            config.experts_per_token,
+        )?;
 
         // Final normalization and LM head
         let final_norm = LayerNorm::new(config.hidden_size, config.layer_norm_eps)?;
@@ -276,35 +289,191 @@ impl DeepSeekR1Model {
         self.lm_head.bias.as_mut_slice()
     }
 
-    /// Iterate all trainable parameters (embeddings rows, lm_head rows and bias)
-    pub fn for_each_parameter<F: FnMut(&str, &mut [f32])>(&mut self, mut f: F) {
-        for (i, row) in self.token_embedding.weights.iter_mut().enumerate() {
-            let name = format!("embeddings.weight[{}]", i);
-            f(&name, row.as_mut_slice());
-        }
-        for (i, row) in self.lm_head.weights.iter_mut().enumerate() {
-            let name = format!("lm_head.weight[{}]", i);
-            f(&name, row.as_mut_slice());
-        }
-        f("lm_head.bias", self.lm_head.bias.as_mut_slice());
+    /// Build a mutable parameter registry over all trainable buffers
+    pub fn parameters_mut(&mut self) -> crate::model::ParameterRegistryMut<'_> {
+        let emb =
+            crate::model::collect_rows_mut("embeddings.weight", &mut self.token_embedding.weights);
+        let mut head = crate::model::collect_rows_mut("lm_head.weight", &mut self.lm_head.weights);
+        let bias = crate::model::single_mut("lm_head.bias", &mut self.lm_head.bias);
+        head.push(bias);
+        crate::model::registry_from_groups(vec![emb, head])
     }
 
-    /// Lightweight summary of parameter names and lengths (per-slice)
-    pub fn parameters_summary(&self) -> Vec<(String, usize)> {
-        let mut out = Vec::new();
+    /// Parameter metadata (names and lengths) for logging/checkpoint preflight
+    pub fn parameters_info(&self) -> Vec<crate::model::ParameterInfo> {
+        let mut infos = Vec::new();
         for (i, row) in self.token_embedding.weights.iter().enumerate() {
-            out.push((format!("embeddings.weight[{}]", i), row.len()));
+            infos.push(crate::model::ParameterInfo::new(
+                format!("embeddings.weight[{}]", i),
+                row.len(),
+            ));
         }
         for (i, row) in self.lm_head.weights.iter().enumerate() {
-            out.push((format!("lm_head.weight[{}]", i), row.len()));
+            infos.push(crate::model::ParameterInfo::new(
+                format!("lm_head.weight[{}]", i),
+                row.len(),
+            ));
         }
-        out.push(("lm_head.bias".to_string(), self.lm_head.bias.len()));
-        out
+        infos.push(crate::model::ParameterInfo::new(
+            "lm_head.bias",
+            self.lm_head.bias.len(),
+        ));
+        infos
     }
 
     /// Immutable view of LM head weight matrix: [vocab_size][hidden_size]
     pub fn lm_head_weights(&self) -> &Vec<Vec<f32>> {
         &self.lm_head.weights
+    }
+
+    /// Incremental decoding API using per-layer KV caches.
+    /// Processes a single input token and returns logits for predicting the next token.
+    pub fn forward_next(&mut self, cache: &mut ModelKVCache, token_id: u32) -> Result<Vec<f32>> {
+        // note: MLA attention isn't supported for incremental KV decoding in this prototype till now
+        if matches!(self.config.attention_type, AttentionType::MLA)
+            || self.config.mla_every.is_some()
+        {
+            return Err(ModelError::Forward(
+                "Incremental decoding (KV cache) is not supported when MLA attention is enabled"
+                    .to_string(),
+            ));
+        }
+        // Ensure per-layer caches are initialized/sized
+        cache.ensure_for_model(self);
+
+        // Determine the current sequence position from the first layer cache
+        let position = cache.per_layer.get(0).map(|c| c.seq_len()).unwrap_or(0);
+
+        // 1) Token embedding for the single token
+        let emb = self.token_embedding.forward(&[token_id])?;
+        let mut h_t = emb
+            .get(0)
+            .ok_or_else(|| ModelError::Forward("Empty embedding output".to_string()))?
+            .clone();
+
+        // 2) Incremental pass through transformer layers with KV cache
+        for (i, layer) in self.layers.iter().enumerate() {
+            let layer_cache = cache
+                .per_layer
+                .get_mut(i)
+                .ok_or_else(|| ModelError::Forward("Layer cache missing".to_string()))?;
+            h_t = layer.forward_next(layer_cache, &h_t, position, false)?;
+        }
+
+        // 3) Final normalization
+        let h_final = self.final_norm.forward(&h_t)?;
+
+        // 4) LM head projection to logits for next-token prediction
+        let logits = self.lm_head.forward(&h_final)?;
+
+        // 5) Append token to cached token_ids only after successful forward
+        cache.token_ids.push(token_id);
+
+        Ok(logits)
+    }
+
+    // ===== Telemetry helpers for MLA/MoE integration =====
+
+    /// Per-layer attention kinds as strings: "Standard" or "MLA"
+    pub fn layer_attention_kinds(&self) -> Vec<&'static str> {
+        self.layers
+            .iter()
+            .map(|l| match l.attention_kind() {
+                crate::model::layers::AttentionKind::Standard => "Standard",
+                crate::model::layers::AttentionKind::MLA => "MLA",
+            })
+            .collect()
+    }
+
+    /// Per-layer feed-forward kinds as strings: "Dense" or "MoE"
+    pub fn layer_ff_kinds(&self) -> Vec<&'static str> {
+        self.layers
+            .iter()
+            .map(|l| match l.ff_kind() {
+                crate::model::layers::FeedForwardKind::Dense => "Dense",
+                crate::model::layers::FeedForwardKind::MoE => "MoE",
+            })
+            .collect()
+    }
+
+    /// Per-layer MLA compression stats, if MLA is active on that layer.
+    /// Each entry is Some((avg_ratio, memory_savings_percent)) or None if not MLA.
+    pub fn layer_mla_compression_stats(&self) -> Vec<Option<(f32, f32)>> {
+        self.layers
+            .iter()
+            .map(|l| l.mla_compression_stats())
+            .collect()
+    }
+
+    /// Per-layer MoE expert utilization distributions, if MoE is active on that layer.
+    /// Each entry is Some(utilization_vec) or None if not MoE.
+    pub fn layer_moe_utilization(&self) -> Vec<Option<Vec<f32>>> {
+        self.layers
+            .iter()
+            .map(|l| l.moe_expert_utilization())
+            .collect()
+    }
+
+    /// Per-layer MoE load balance loss (variance), if MoE is active on that layer.
+    /// Each entry is Some(variance) or None if not MoE.
+    pub fn layer_moe_load_balance_loss(&self) -> Vec<Option<f32>> {
+        self.layers
+            .iter()
+            .map(|l| l.moe_load_balance_loss())
+            .collect()
+    }
+
+    /// Reset MoE load balancer statistics on all layers that use MoE.
+    /// Returns the count of layers that were reset.
+    pub fn reset_all_moe_load_balancers(&mut self) -> usize {
+        let mut count = 0usize;
+        for layer in &self.layers {
+            if layer.moe_reset_load_balancer() {
+                count += 1;
+            }
+        }
+        count
+    }
+}
+
+/// Model-level KV cache holding the token prefix and per-layer attention caches.
+/// The per-layer caches are sized according to the model's layer count and each
+/// cache is initialized with the corresponding number of heads.
+pub struct ModelKVCache {
+    pub token_ids: Vec<u32>,
+    pub per_layer: Vec<StandardAttentionCache>,
+}
+
+impl ModelKVCache {
+    /// Create a new empty cache aligned with the provided model
+    pub fn new(model: &DeepSeekR1Model) -> Self {
+        let mut per_layer = Vec::with_capacity(model.layers.len());
+        for layer in &model.layers {
+            per_layer.push(StandardAttentionCache::new(layer.num_heads()));
+        }
+        Self {
+            token_ids: Vec::new(),
+            per_layer,
+        }
+    }
+
+    /// Ensure the internal per-layer caches match the model's layers
+    pub fn ensure_for_model(&mut self, model: &DeepSeekR1Model) {
+        if self.per_layer.len() != model.layers.len() {
+            self.per_layer.clear();
+            for layer in &model.layers {
+                self.per_layer
+                    .push(StandardAttentionCache::new(layer.num_heads()));
+            }
+        }
+    }
+
+    /// Reset the cached prefix and clear all per-layer caches
+    pub fn clear(&mut self) {
+        self.token_ids.clear();
+        for cache in &mut self.per_layer {
+            cache.clear();
+        }
     }
 }
 
@@ -338,5 +507,117 @@ mod tests {
         let input_ids = vec![0u32, 1u32, 2u32]; // length 3 > max_seq_len 2
         let result = model.forward(&input_ids);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_incremental_matches_full_for_short_prefix() {
+        let config = ModelConfig::default();
+        let mut model = DeepSeekR1Model::new(config.clone()).unwrap();
+
+        // Short deterministic prefix (within vocab bounds)
+        let input_ids = vec![1u32, 2u32, 3u32, 4u32];
+
+        // Compare at several prefix lengths
+        for i in 0..input_ids.len() {
+            // Prefix [..=i]
+            let prefix = &input_ids[..=i];
+
+            // Full forward for prefix: compare last vocab slice
+            let full_logits = model.forward(prefix).expect("full forward failed");
+            let vocab = config.vocab_size;
+            assert!(
+                full_logits.len() >= vocab,
+                "unexpected full logits size: {} < {}",
+                full_logits.len(),
+                vocab
+            );
+            let full_next = &full_logits[full_logits.len() - vocab..];
+
+            // Incremental: clear cache, then feed tokens up to i
+            let mut cache = super::ModelKVCache::new(&model);
+            let mut last_logits = Vec::new();
+            for j in 0..=i {
+                last_logits = model
+                    .forward_next(&mut cache, input_ids[j])
+                    .expect("forward_next failed");
+            }
+
+            // Now the last incremental logits should match full_next within tolerance
+            assert_eq!(
+                last_logits.len(),
+                vocab,
+                "unexpected incremental logits size"
+            );
+            let mut max_diff = 0f32;
+            for k in 0..vocab {
+                let d = (last_logits[k] - full_next[k]).abs();
+                if d > max_diff {
+                    max_diff = d;
+                }
+            }
+            // Use a loose epsilon due to random init and float ops accumulation
+            assert!(
+                max_diff < 1e-3,
+                "incremental vs full mismatch at prefix {}: max_diff={}",
+                i,
+                max_diff
+            );
+        }
+    }
+
+    #[test]
+    fn test_kv_cache_growth_and_position() {
+        let config = ModelConfig::default();
+        let mut model = DeepSeekR1Model::new(config.clone()).unwrap();
+
+        let seq = vec![10u32, 20u32, 30u32, 40u32, 50u32];
+        let mut cache = super::ModelKVCache::new(&model);
+
+        // Initially empty
+        assert_eq!(cache.token_ids.len(), 0);
+        assert!(
+            !cache.per_layer.is_empty(),
+            "per-layer caches not initialized"
+        );
+        let mut expected_len = 0usize;
+
+        for (idx, &tok) in seq.iter().enumerate() {
+            // Before feeding next token, all layer caches should report expected_len
+            for layer_cache in &cache.per_layer {
+                assert_eq!(
+                    layer_cache.seq_len(),
+                    expected_len,
+                    "seq_len should equal number of tokens already fed"
+                );
+            }
+
+            // Feed token
+            let _ = model
+                .forward_next(&mut cache, tok)
+                .expect("forward_next failed");
+            expected_len += 1;
+
+            // After feeding, seq_len should increment by 1 on all layers
+            for (lidx, layer_cache) in cache.per_layer.iter().enumerate() {
+                assert_eq!(
+                    layer_cache.seq_len(),
+                    expected_len,
+                    "layer {} seq_len mismatch at step {}",
+                    lidx,
+                    idx
+                );
+            }
+
+            // Token ids in cache should match the fed prefix
+            assert_eq!(cache.token_ids.len(), expected_len);
+            assert_eq!(&cache.token_ids[..], &seq[..=idx]);
+        }
+
+        // Clear and verify reset
+        cache.clear();
+        assert_eq!(cache.token_ids.len(), 0);
+        for layer_cache in &cache.per_layer {
+            assert_eq!(layer_cache.seq_len(), 0);
+        }
     }
 }

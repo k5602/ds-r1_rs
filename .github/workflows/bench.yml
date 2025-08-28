@@ -1,0 +1,88 @@
+name: Benchmarks
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  decoding-bench:
+    name: Decoding Benchmark (Criterion)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run decoding benchmark
+        run: |
+          cargo bench --bench decoding -- --warm-up-time 0.5 --measurement-time 10
+
+      - name: Prepare benchmark artifacts
+        if: always()
+        run: |
+          mkdir -p bench_artifacts
+          if [ -d target/criterion ]; then
+            cp -r target/criterion bench_artifacts/criterion
+          fi
+          cat > bench_artifacts/README.txt <<'EOF'
+          Decoding benchmark artifacts
+          ----------------------------
+
+          This artifact contains Criterion benchmark outputs for decoding throughput:
+          - Comparison: no_cache vs with_cache (incremental KV cache)
+          - Prompts: 64, 128, 256 tokens
+          - Generated tokens: 128
+
+          Contents:
+          - criterion/: Raw Criterion results, including JSON and (if enabled) HTML reports.
+
+          Viewing HTML (if present):
+          - Some setups generate an index at: criterion/report/index.html
+          - Per-benchmark reports under: criterion/<group>/<bench-id>/report/index.html
+
+          Notes:
+          - Results vary by runner hardware and thermal conditions.
+          - Re-run locally for more precise numbers.
+          EOF
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: decoding-bench-${{ github.run_id }}
+          path: bench_artifacts
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Post summary
+        if: always()
+        run: |
+          {
+            echo "### Decoding Benchmark"
+            echo
+            echo "- Artifact: decoding-bench-${{ github.run_id }}"
+            if [ -d target/criterion ]; then
+              echo
+              echo "#### Bench groups discovered"
+              find target/criterion -maxdepth 2 -mindepth 2 -type d -printf "- %p\n" || true
+            else
+              echo
+              echo "_No Criterion output directory found (target/criterion missing)._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

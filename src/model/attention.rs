@@ -870,6 +870,165 @@ impl StandardAttention {
     pub fn head_dim(&self) -> usize {
         self.head_dim
     }
+
+    /// Incremental decoding step with per-head KV cache.
+    /// - x_t: current token hidden input [hidden_size]
+    /// - position: zero-based position in the sequence (should equal current cache length)
+    /// Returns: output vector [hidden_size] for this token position.
+    pub fn forward_next(
+        &self,
+        cache: &mut StandardAttentionCache,
+        x_t: &[f32],
+        position: usize,
+    ) -> Result<Vec<f32>> {
+        // Validate input shape
+        if x_t.len() != self.hidden_size {
+            return Err(ModelError::Forward(format!(
+                "forward_next: input size {} doesn't match hidden_size {}",
+                x_t.len(),
+                self.hidden_size
+            )));
+        }
+
+        // Initialize cache heads if needed
+        cache.ensure_heads(self.num_heads);
+
+        // Validate position monotonicity with cache length
+        let current_len = cache.seq_len();
+        if position != current_len {
+            return Err(ModelError::Forward(format!(
+                "forward_next: position {} must equal current cache length {}",
+                position, current_len
+            )));
+        }
+
+        // Project Q, K, V for the single token
+        let q_full = self.q_proj.forward(x_t)?;
+        let k_full = self.k_proj.forward(x_t)?;
+        let v_full = self.v_proj.forward(x_t)?;
+
+        // Prepare concatenated per-head outputs
+        let mut concat = vec![0.0f32; self.hidden_size];
+        let scale = (self.head_dim as f32).sqrt();
+
+        for head in 0..self.num_heads {
+            let start = head * self.head_dim;
+            let end = start + self.head_dim;
+
+            // Slice per-head projections
+            let q_h = &q_full[start..end];
+            let k_h = &k_full[start..end];
+            let v_h = &v_full[start..end];
+
+            // Apply RoPE to Q and K at current position
+            let q_rot = self.rope.apply_rotary(q_h, position)?;
+            let k_rot = self.rope.apply_rotary(k_h, position)?;
+
+            // Append new K,V to cache
+            cache.k[head].push(k_rot);
+            cache.v[head].push(v_h.to_vec());
+
+            // Compute attention scores against all cached keys for this head
+            let seq_len = cache.k[head].len();
+            let mut scores = vec![0.0f32; seq_len];
+
+            for t in 0..seq_len {
+                let k_t = &cache.k[head][t];
+                let mut dot = 0.0f32;
+                for i in 0..self.head_dim {
+                    dot += q_rot[i] * k_t[i];
+                }
+                scores[t] = dot / scale;
+            }
+
+            // Causal mask is implicit as we never reference future positions
+
+            // Softmax over scores
+            let max_val = scores
+                .iter()
+                .fold(f32::NEG_INFINITY, |a, &b| if b > a { b } else { a });
+            let mut sum = 0.0f32;
+            for s in scores.iter_mut() {
+                *s = (*s - max_val).exp();
+                sum += *s;
+            }
+            if sum > 0.0 {
+                for s in scores.iter_mut() {
+                    *s /= sum;
+                }
+            }
+
+            // Weighted sum over cached V
+            let mut ctx = vec![0.0f32; self.head_dim];
+            for t in 0..seq_len {
+                let weight = scores[t];
+                let v_t = &cache.v[head][t];
+                for i in 0..self.head_dim {
+                    ctx[i] += weight * v_t[i];
+                }
+            }
+
+            // Write head context into concatenated buffer
+            for i in 0..self.head_dim {
+                concat[start + i] = ctx[i];
+            }
+        }
+
+        // Final output projection
+        let out = self.o_proj.forward(&concat)?;
+        Ok(out)
+    }
+}
+
+pub struct StandardAttentionCache {
+    /// Per-head cached keys: [num_heads][seq_len][head_dim]
+    k: Vec<Vec<Vec<f32>>>,
+    /// Per-head cached values: [num_heads][seq_len][head_dim]
+    v: Vec<Vec<Vec<f32>>>,
+}
+
+impl StandardAttentionCache {
+    /// Create a new, empty cache for a given number of heads.
+    pub fn new(num_heads: usize) -> Self {
+        let mut k = Vec::with_capacity(num_heads);
+        let mut v = Vec::with_capacity(num_heads);
+        for _ in 0..num_heads {
+            k.push(Vec::new());
+            v.push(Vec::new());
+        }
+        Self { k, v }
+    }
+
+    /// Ensure head arrays are present (idempotent).
+    fn ensure_heads(&mut self, num_heads: usize) {
+        if self.k.len() < num_heads {
+            let missing = num_heads - self.k.len();
+            for _ in 0..missing {
+                self.k.push(Vec::new());
+            }
+        }
+        if self.v.len() < num_heads {
+            let missing = num_heads - self.v.len();
+            for _ in 0..missing {
+                self.v.push(Vec::new());
+            }
+        }
+    }
+
+    /// Current cached sequence length (0 if empty).
+    pub fn seq_len(&self) -> usize {
+        self.k.first().map(|h| h.len()).unwrap_or(0)
+    }
+
+    /// Clear all cached keys/values.
+    pub fn clear(&mut self) {
+        for h in &mut self.k {
+            h.clear();
+        }
+        for h in &mut self.v {
+            h.clear();
+        }
+    }
 }
 
 #[cfg(test)]
