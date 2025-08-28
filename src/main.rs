@@ -1,4 +1,9 @@
-use ds_r1_rs::{DeepSeekR1Model, InferenceEngine, ModelConfig};
+use ds_r1_rs::inference::engine::InferenceEngine;
+use ds_r1_rs::inference::reasoning::{
+    ReasoningAnalysis, ReasoningSection, StructuredReasoningOutput,
+};
+use ds_r1_rs::utils::evaluation::EvaluationHarness;
+use ds_r1_rs::{DeepSeekR1Model, ModelConfig};
 use std::env;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -17,10 +22,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  config    - Show default model configuration");
         println!("  version   - Show version and build information");
         println!("  test      - Run basic functionality tests");
+        println!("  generate  - Generate text from a prompt");
+        println!("  eval      - Run reasoning benchmarks");
         println!();
         println!("Examples:");
         println!("  cargo run -- config");
         println!("  cargo run -- test");
+        println!("  cargo run -- generate \"Explain Rust ownership\"");
+        println!("  cargo run -- eval");
         println!("  cargo run --example config_demo");
         println!();
         println!("For development:");
@@ -120,9 +129,75 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("🎉 All basic functionality tests passed!");
             println!("The project foundation is ready for implementing model components.");
         }
+        "generate" => {
+            if args.len() < 3 {
+                println!("Usage: {} generate <prompt>", args[0]);
+                return Ok(());
+            }
+            let prompt = args[2..].join(" ");
+            let config = ModelConfig::default();
+            let model = DeepSeekR1Model::new(config)?;
+            let mut engine = InferenceEngine::new(model)?;
+            match engine.generate_text(&prompt) {
+                Ok(text) => {
+                    println!("Generated:");
+                    println!("{}", text);
+                }
+                Err(e) => {
+                    println!("Generation failed: {}", e);
+                    return Err(e.into());
+                }
+            }
+        }
+        "eval" => {
+            println!("🧪 Running Reasoning Benchmarks");
+            println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            let config = ModelConfig::default();
+            let model = DeepSeekR1Model::new(config.clone())?;
+            let mut engine = InferenceEngine::new(model)?;
+            let harness = EvaluationHarness::new();
+
+            for b in harness.get_benchmarks() {
+                let mut infer =
+                    |problem: &str| -> ds_r1_rs::utils::error::Result<StructuredReasoningOutput> {
+                        let reasoning = engine.generate_with_reasoning(problem)?;
+                        let analysis = ReasoningAnalysis::new(&reasoning.thinking_chain);
+                        let parsed_sections = reasoning
+                            .thinking_chain
+                            .iter()
+                            .map(|s| ReasoningSection::new(s.clone()))
+                            .collect();
+                        Ok(StructuredReasoningOutput {
+                            reasoning_output: reasoning,
+                            analysis,
+                            parsed_sections,
+                        })
+                    };
+
+                match harness.evaluate_comprehensive(&b.name, &mut infer) {
+                    Ok(results) => {
+                        println!("Benchmark: {}", results.benchmark_name);
+                        println!("  Total problems: {}", results.total_problems);
+                        println!("  Solved correctly: {}", results.solved_correctly);
+                        println!(
+                            "  Avg overall quality: {:.2}",
+                            results.average_metrics.overall_quality
+                        );
+                        println!(
+                            "  Tokens/sec: {:.2}",
+                            results.performance_metrics.tokens_per_second
+                        );
+                        println!();
+                    }
+                    Err(e) => {
+                        println!("Evaluation failed for {}: {}", b.name, e);
+                    }
+                }
+            }
+        }
         _ => {
             println!("Unknown command: {}", args[1]);
-            println!("Use 'config', 'version', or 'test'");
+            println!("Use 'config', 'version', 'test', 'generate', or 'eval'");
         }
     }
 

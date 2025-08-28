@@ -978,7 +978,7 @@ mod tests {
 
     #[test]
     fn test_moe_sparse_activation() {
-        let mut moe = MoELayer::new(32, 8, 2).unwrap();
+        let moe = MoELayer::new(32, 8, 2).unwrap();
         let input = vec![1.0; 32];
 
         // Get active experts
@@ -1116,7 +1116,7 @@ mod tests {
 
     #[test]
     fn test_moe_expert_specialization() {
-        let mut moe = MoELayer::new(4, 4, 1).unwrap(); // 1 expert per token for clear specialization
+        let moe = MoELayer::new(4, 4, 1).unwrap(); // 1 expert per token for clear specialization
 
         // Process the same input multiple times to see consistent routing
         let input = vec![1.0, 0.0, 0.0, 0.0];

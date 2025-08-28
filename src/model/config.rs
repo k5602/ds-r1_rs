@@ -36,7 +36,6 @@ pub struct ModelConfig {
 impl Default for ModelConfig {
     fn default() -> Self {
         Self {
-            // Small model for prototype demonstration
             vocab_size: 32000,
             hidden_size: 512,
             num_layers: 8,

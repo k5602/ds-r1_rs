@@ -220,7 +220,7 @@ impl MLAAttention {
 
         // For MLA, we typically apply rotary embeddings to half the dimensions
         let rotary_dim = self.head_dim / 2;
-        let non_rotary_dim = self.head_dim - rotary_dim;
+        let _non_rotary_dim = self.head_dim - rotary_dim;
 
         let mut rotary_parts = Vec::with_capacity(seq_len);
         let mut non_rotary_parts = Vec::with_capacity(seq_len);
