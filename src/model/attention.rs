@@ -631,6 +631,35 @@ impl Linear {
 
         Ok(output)
     }
+    /// Get a reference to the weight matrix [out_features][in_features]
+    pub fn weights(&self) -> &Vec<Vec<f32>> {
+        &self.weights
+    }
+
+    /// Get a mutable reference to the weight matrix [out_features][in_features]
+    pub fn weights_mut(&mut self) -> &mut Vec<Vec<f32>> {
+        &mut self.weights
+    }
+
+    /// Get a reference to the bias vector [out_features]
+    pub fn bias(&self) -> &Vec<f32> {
+        &self.bias
+    }
+
+    /// Get a mutable reference to the bias vector [out_features]
+    pub fn bias_mut(&mut self) -> &mut Vec<f32> {
+        &mut self.bias
+    }
+
+    /// Get the input feature dimension
+    pub fn in_features(&self) -> usize {
+        self.in_features
+    }
+
+    /// Get the output feature dimension
+    pub fn out_features(&self) -> usize {
+        self.out_features
+    }
 }
 
 /// Standard multi-head attention implementation

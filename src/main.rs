@@ -2,6 +2,8 @@ use ds_r1_rs::inference::engine::InferenceEngine;
 use ds_r1_rs::inference::reasoning::{
     ReasoningAnalysis, ReasoningSection, StructuredReasoningOutput,
 };
+use ds_r1_rs::training::data::SyntheticDataGenerator;
+use ds_r1_rs::training::trainer::BasicTrainer;
 use ds_r1_rs::utils::evaluation::EvaluationHarness;
 use ds_r1_rs::{DeepSeekR1Model, ModelConfig};
 use std::env;
@@ -24,12 +26,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  test      - Run basic functionality tests");
         println!("  generate  - Generate text from a prompt");
         println!("  eval      - Run reasoning benchmarks");
+        println!("  train     - Run micro supervised training loop");
         println!();
         println!("Examples:");
         println!("  cargo run -- config");
         println!("  cargo run -- test");
         println!("  cargo run -- generate \"Explain Rust ownership\"");
         println!("  cargo run -- eval");
+        println!("  cargo run -- train --steps 50");
         println!("  cargo run --example config_demo");
         println!();
         println!("For development:");
@@ -193,6 +197,68 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("Evaluation failed for {}: {}", b.name, e);
                     }
                 }
+            }
+        }
+        "train" => {
+            // Parse optional CLI flags: --steps N, --batch N
+            let mut steps: usize = 50;
+            let mut batch_size: usize = 8;
+            let mut idx = 2;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--steps" if idx + 1 < args.len() => {
+                        if let Ok(v) = args[idx + 1].parse::<usize>() {
+                            steps = v;
+                        }
+                        idx += 2;
+                    }
+                    "--batch" if idx + 1 < args.len() => {
+                        if let Ok(v) = args[idx + 1].parse::<usize>() {
+                            batch_size = v;
+                        }
+                        idx += 2;
+                    }
+                    _ => {
+                        idx += 1;
+                    }
+                }
+            }
+
+            println!(
+                "🏋️  Training for {} steps (batch size {})",
+                steps, batch_size
+            );
+
+            let config = ModelConfig::default();
+            let model = DeepSeekR1Model::new(config)?;
+            let optimizer_config = ds_r1_rs::training::optimizer::OptimizerConfig {
+                learning_rate: 0.001,
+                ..ds_r1_rs::training::optimizer::OptimizerConfig::default()
+            };
+            let mut trainer = BasicTrainer::with_optimizer_config(model, optimizer_config)?;
+            let mut data_gen = SyntheticDataGenerator::new();
+
+            let mut last_loss: Option<f32> = None;
+            for step in 1..=steps {
+                let examples = data_gen.generate_mixed_dataset(batch_size);
+                let batch = ds_r1_rs::training::data::TrainingBatch::new(examples);
+                let metrics = trainer.train_step(&batch)?;
+
+                let trend = match last_loss {
+                    Some(prev) if metrics.loss <= prev => "↓",
+                    Some(_) => "↑",
+                    None => "-",
+                };
+
+                println!(
+                    "step {:>4}: loss {:.4}  acc {:.2}%  {}",
+                    step,
+                    metrics.loss,
+                    metrics.accuracy * 100.0,
+                    trend
+                );
+
+                last_loss = Some(metrics.loss);
             }
         }
         _ => {

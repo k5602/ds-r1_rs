@@ -96,6 +96,27 @@ impl BasicTrainer {
         Ok((input_ids, target_ids))
     }
 
+    /// Prepare last-step training data: per-example input token sequences and single-target class
+    fn prepare_last_step_data(
+        &self,
+        examples: &[TrainingExample],
+    ) -> Result<(Vec<Vec<u32>>, Vec<u32>)> {
+        let mut inputs: Vec<Vec<u32>> = Vec::with_capacity(examples.len());
+        let mut targets: Vec<u32> = Vec::with_capacity(examples.len());
+
+        for example in examples {
+            let input_tokens = self.tokenize(&example.input);
+            // For a classification-like next-token objective, use the first token of the target string
+            let target_tokens = self.tokenize(&example.target);
+            let target_id = target_tokens.get(0).copied().unwrap_or(0);
+
+            inputs.push(input_tokens);
+            targets.push(target_id);
+        }
+
+        Ok((inputs, targets))
+    }
+
     /// Compute gradients using backpropagation through cross-entropy loss
     fn compute_gradients(&self, predictions: &[f32], targets: &[u32]) -> Result<Vec<f32>> {
         let mut gradients = vec![0.0; predictions.len()];
@@ -153,28 +174,29 @@ impl BasicTrainer {
             return Err(ModelError::Training("Empty batch".to_string()));
         }
 
-        // Prepare training data
-        let (input_ids, target_ids) = self.prepare_training_data(&batch.examples)?;
+        // Prepare per-example last-step data
+        let (inputs_per_example, targets) = self.prepare_last_step_data(&batch.examples)?;
 
-        if input_ids.is_empty() || target_ids.is_empty() {
+        if inputs_per_example.is_empty() || targets.is_empty() {
             return Err(ModelError::Training("No valid training data".to_string()));
         }
 
-        // Forward pass through the model
-        let predictions = self.forward_pass(&input_ids)?;
+        // Forward per-example (last-step) and collect last hiddens and last input ids
+        let (predictions, last_hiddens, last_input_ids) =
+            self.forward_last_step(&inputs_per_example)?;
 
         // Compute loss
-        let target_floats: Vec<f32> = target_ids.iter().map(|&x| x as f32).collect();
+        let target_floats: Vec<f32> = targets.iter().map(|&x| x as f32).collect();
         let loss = self.loss_fn.compute_loss(&predictions, &target_floats)?;
 
         // Compute accuracy
-        let accuracy = self.loss_fn.compute_accuracy(&predictions, &target_ids);
+        let accuracy = self.loss_fn.compute_accuracy(&predictions, &targets);
 
         // Compute gradients
-        let gradients = self.compute_gradients(&predictions, &target_ids)?;
+        let gradients = self.compute_gradients(&predictions, &targets)?;
 
-        // Update model parameters using computed gradients
-        self.update_model_parameters(&gradients)?;
+        // Update model parameters using computed gradients (LM head weights + bias + embeddings)
+        self.update_model_parameters(&gradients, &last_hiddens, &last_input_ids)?;
 
         self.step_count += 1;
 
@@ -188,23 +210,159 @@ impl BasicTrainer {
         Ok(logits)
     }
 
-    /// Update model parameters using gradients
-    fn update_model_parameters(&mut self, gradients: &[f32]) -> Result<()> {
-        // In a real implementation, this would update the actual model parameters
-        // For now, we'll simulate parameter updates by updating a parameter group
+    /// Forward per-example and return concatenated last-step logits, last hidden states, and last input ids
+    fn forward_last_step(
+        &mut self,
+        inputs: &[Vec<u32>],
+    ) -> Result<(Vec<f32>, Vec<Vec<f32>>, Vec<u32>)> {
+        let mut predictions: Vec<f32> = Vec::new();
+        let mut last_hiddens: Vec<Vec<f32>> = Vec::with_capacity(inputs.len());
+        let mut last_input_ids: Vec<u32> = Vec::with_capacity(inputs.len());
 
-        // Create parameter groups based on gradient chunks
-        let chunk_size = 1000.min(gradients.len());
+        for input in inputs {
+            if input.is_empty() {
+                return Err(ModelError::Training("Empty input sequence".to_string()));
+            }
 
-        for (i, chunk) in gradients.chunks(chunk_size).enumerate() {
-            let param_name = format!("layer_{}", i);
+            // Full forward for this example
+            let logits = self.model.forward(input)?;
+            let vocab_size = self.vocab_size;
+            if logits.len() < vocab_size {
+                return Err(ModelError::Training(
+                    "Model output size doesn't match vocabulary size".to_string(),
+                ));
+            }
+            // Take last position logits only
+            let last_logits = &logits[logits.len() - vocab_size..];
+            predictions.extend_from_slice(last_logits);
 
-            // Create dummy parameters if they don't exist
-            let mut params = vec![0.1; chunk.len()];
+            // Final hidden states and take only last one
+            let hidden = self.model.forward_hidden(input)?;
+            let last_h = hidden
+                .last()
+                .ok_or_else(|| ModelError::Training("No hidden states".to_string()))?
+                .clone();
+            last_hiddens.push(last_h);
 
-            // Apply gradients using the optimizer
+            // Track last input id for embedding update
+            last_input_ids.push(*input.last().unwrap());
+        }
+
+        Ok((predictions, last_hiddens, last_input_ids))
+    }
+
+    /// Update model parameters using gradients from CE on logits.
+    /// Implements a minimal backward path for the LM head (weights + bias) and token embeddings.
+    /// - dW_lm_head = sum_t outer(dlogits_t, h_t)
+    /// - db_lm_head = sum_t dlogits_t
+    /// - dembed[token_t] += W^T * dlogits_t   (minimal proxy ignoring intermediate layers)
+    fn update_model_parameters(
+        &mut self,
+        gradients: &[f32],
+        hidden: &[Vec<f32>],
+        input_ids: &[u32],
+    ) -> Result<()> {
+        let vocab_size = self.vocab_size;
+        if vocab_size == 0 {
+            return Err(ModelError::Training("Vocab size is zero".to_string()));
+        }
+        if gradients.len() % vocab_size != 0 {
+            return Err(ModelError::Training(format!(
+                "Gradients length {} is not divisible by vocab_size {}",
+                gradients.len(),
+                vocab_size
+            )));
+        }
+        let num_samples = gradients.len() / vocab_size;
+        if hidden.len() != num_samples || input_ids.len() != num_samples {
+            return Err(ModelError::Training(format!(
+                "Mismatch: hidden len {} / input_ids len {} vs samples {}",
+                hidden.len(),
+                input_ids.len(),
+                num_samples
+            )));
+        }
+
+        // 1) Bias gradients: db = sum_t dlogits_t
+        let mut bias_grads = vec![0.0f32; vocab_size];
+        for (i, chunk) in gradients.chunks(vocab_size).enumerate() {
+            let _ = i; // unused
+            for v in 0..vocab_size {
+                bias_grads[v] += chunk[v];
+            }
+        }
+
+        // Apply bias update
+        {
+            let name = "lm_head.bias";
+            let bias_slice = self.model.lm_head_bias_mut();
             self.optimizer
-                .step_parameter(&param_name, &mut params, chunk)?;
+                .step_parameter(name, bias_slice, &bias_grads)?;
+        }
+
+        // 2) Weight gradients: dW[v] = sum_t dlogits_t[v] * h_t
+        // Accumulate per row to avoid storing full matrix if not needed.
+        // Use hidden_size inferred from a row of lm_head.
+        let lm_w_snapshot = self.model.lm_head_weights().clone();
+        if lm_w_snapshot.is_empty() {
+            return Err(ModelError::Training(
+                "LM head weights are empty".to_string(),
+            ));
+        }
+        let hidden_size = lm_w_snapshot[0].len();
+
+        for v in 0..vocab_size {
+            let mut row_grad = vec![0.0f32; hidden_size];
+            for t in 0..num_samples {
+                let g_vt = gradients[t * vocab_size + v];
+                if g_vt != 0.0 {
+                    let h_t = &hidden[t];
+                    // Safety: hidden[t] must match hidden_size
+                    if h_t.len() != hidden_size {
+                        return Err(ModelError::Training(format!(
+                            "Hidden size {} mismatch at t={} (expected {})",
+                            h_t.len(),
+                            t,
+                            hidden_size
+                        )));
+                    }
+                    for k in 0..hidden_size {
+                        row_grad[k] += g_vt * h_t[k];
+                    }
+                }
+            }
+            // Apply update to lm_head.weight[v]
+            let name = format!("lm_head.weight[{}]", v);
+            let row_slice = self.model.lm_head_row_mut(v)?;
+            self.optimizer.step_parameter(&name, row_slice, &row_grad)?;
+        }
+
+        // 3) Embedding gradients: for each position t, dembed[token_t] += W^T * dlogits_t
+        // We compute per-t grad_hidden = W^T * dlogits_t, then update the corresponding embedding row.
+        for t in 0..num_samples {
+            let token_id = input_ids[t] as usize;
+            if token_id >= self.vocab_size {
+                continue; // skip OOB
+            }
+            let dlogits_t = &gradients[t * vocab_size..(t + 1) * vocab_size];
+
+            // grad_hidden = W^T * dlogits_t
+            let mut grad_hidden = vec![0.0f32; hidden_size];
+            for v in 0..vocab_size {
+                let g = dlogits_t[v];
+                if g != 0.0 {
+                    let w_row = &lm_w_snapshot[v];
+                    for k in 0..hidden_size {
+                        grad_hidden[k] += w_row[k] * g;
+                    }
+                }
+            }
+
+            // Apply update to embedding row for this token
+            let name = format!("embeddings.weight[{}]", token_id);
+            let row_slice = self.model.embedding_row_mut(token_id)?;
+            self.optimizer
+                .step_parameter(&name, row_slice, &grad_hidden)?;
         }
 
         Ok(())
@@ -221,12 +379,13 @@ impl BasicTrainer {
             return Err(ModelError::Training("Empty evaluation set".to_string()));
         }
 
-        let (input_ids, target_ids) = self.prepare_training_data(examples)?;
-        let predictions = self.forward_pass(&input_ids)?;
+        let (inputs_per_example, targets) = self.prepare_last_step_data(examples)?;
+        let (predictions, _last_hiddens, _last_input_ids) =
+            self.forward_last_step(&inputs_per_example)?;
 
-        let target_floats: Vec<f32> = target_ids.iter().map(|&x| x as f32).collect();
+        let target_floats: Vec<f32> = targets.iter().map(|&x| x as f32).collect();
         let loss = self.loss_fn.compute_loss(&predictions, &target_floats)?;
-        let accuracy = self.loss_fn.compute_accuracy(&predictions, &target_ids);
+        let accuracy = self.loss_fn.compute_accuracy(&predictions, &targets);
 
         Ok(TrainingMetrics::new(loss, accuracy, self.step_count))
     }
@@ -827,5 +986,48 @@ mod tests {
         let metrics = result.unwrap();
         assert_eq!(metrics.total_examples, 1);
         assert!(metrics.average_reward >= 0.0);
+    }
+
+    #[test]
+    fn test_loss_decreases_after_one_step() {
+        let config = ModelConfig::default();
+        let model = DeepSeekR1Model::new(config).unwrap();
+        let mut trainer = BasicTrainer::new(model).unwrap();
+
+        // Small deterministic batch
+        let examples = vec![
+            TrainingExample::new(
+                "What is 2 + 2?".to_string(),
+                "4".to_string(),
+                ProblemType::Math,
+            ),
+            TrainingExample::new(
+                "Spell 'cat'".to_string(),
+                "cat".to_string(),
+                ProblemType::General,
+            ),
+            TrainingExample::new("3 * 3 = ?".to_string(), "9".to_string(), ProblemType::Math),
+            TrainingExample::new(
+                "Hello".to_string(),
+                "Hello".to_string(),
+                ProblemType::General,
+            ),
+        ];
+
+        // Baseline loss before training
+        let baseline = trainer.evaluate(&examples).unwrap().loss;
+
+        // One training step on the same batch
+        let batch = TrainingBatch::new(examples.clone());
+        let _metrics = trainer.train_step(&batch).unwrap();
+
+        // Loss after one update should decrease (tolerance-based)
+        let after = trainer.evaluate(&examples).unwrap().loss;
+        assert!(
+            after < baseline,
+            "expected loss to decrease: before {:.6} after {:.6}",
+            baseline,
+            after
+        );
     }
 }
