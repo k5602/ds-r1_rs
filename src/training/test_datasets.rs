@@ -116,7 +116,7 @@ pub fn create_extended_math_dataset() -> ReasoningBenchmark {
                 category: ProblemCategory::Mathematics,
                 difficulty: DifficultyLevel::Easy,
             },
-            
+
             // Geometry
             ReasoningProblem {
                 id: "ext_math_004".to_string(),
@@ -132,7 +132,7 @@ pub fn create_extended_math_dataset() -> ReasoningBenchmark {
                 category: ProblemCategory::Mathematics,
                 difficulty: DifficultyLevel::Medium,
             },
-            
+
             // Advanced Problems
             ReasoningProblem {
                 id: "ext_math_006".to_string(),
@@ -172,7 +172,7 @@ pub fn create_extended_logic_dataset() -> ReasoningBenchmark {
                 category: ProblemCategory::Logic,
                 difficulty: DifficultyLevel::Medium,
             },
-            
+
             // Puzzle Logic
             ReasoningProblem {
                 id: "ext_logic_003".to_string(),
@@ -212,7 +212,7 @@ pub fn create_extended_programming_dataset() -> ReasoningBenchmark {
                 category: ProblemCategory::Programming,
                 difficulty: DifficultyLevel::Easy,
             },
-            
+
             // Data Structure Analysis
             ReasoningProblem {
                 id: "ext_prog_003".to_string(),
@@ -228,7 +228,7 @@ pub fn create_extended_programming_dataset() -> ReasoningBenchmark {
                 category: ProblemCategory::Programming,
                 difficulty: DifficultyLevel::Medium,
             },
-            
+
             // Algorithm Design
             ReasoningProblem {
                 id: "ext_prog_005".to_string(),

@@ -1,9 +1,10 @@
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use ds_r1_rs::inference::generation::{GenerationCache, GenerationConfig, TextGenerator};
 use ds_r1_rs::inference::sampling::SamplingConfig;
 use ds_r1_rs::model::config::ModelConfig;
 use ds_r1_rs::model::transformer::DeepSeekR1Model;
 use ds_r1_rs::utils::tokenizer::{Tokenizer, TokenizerConfig};
+use std::hint::black_box;
 
 fn make_prompt(len: usize) -> String {
     // Deterministic prompt of given length to avoid randomness overhead in benches

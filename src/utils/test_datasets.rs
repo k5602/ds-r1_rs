@@ -37,7 +37,7 @@ impl TestDatasets {
                     category: ProblemCategory::Mathematics,
                     difficulty: DifficultyLevel::Easy,
                 },
-                
+
                 // Percentages and Fractions - Easy to Medium
                 ReasoningProblem {
                     id: "math_comp_004".to_string(),
@@ -60,7 +60,7 @@ impl TestDatasets {
                     category: ProblemCategory::Mathematics,
                     difficulty: DifficultyLevel::Medium,
                 },
-                
+
                 // Algebra - Medium
                 ReasoningProblem {
                     id: "math_comp_007".to_string(),
@@ -83,7 +83,7 @@ impl TestDatasets {
                     category: ProblemCategory::Mathematics,
                     difficulty: DifficultyLevel::Medium,
                 },
-                
+
                 // Geometry - Medium
                 ReasoningProblem {
                     id: "math_comp_010".to_string(),
@@ -99,7 +99,7 @@ impl TestDatasets {
                     category: ProblemCategory::Mathematics,
                     difficulty: DifficultyLevel::Medium,
                 },
-                
+
                 // Word Problems - Medium to Hard
                 ReasoningProblem {
                     id: "math_comp_012".to_string(),
@@ -115,7 +115,7 @@ impl TestDatasets {
                     category: ProblemCategory::Mathematics,
                     difficulty: DifficultyLevel::Medium,
                 },
-                
+
                 // Advanced Problems - Hard
                 ReasoningProblem {
                     id: "math_comp_014".to_string(),
@@ -162,7 +162,7 @@ impl TestDatasets {
                     category: ProblemCategory::Programming,
                     difficulty: DifficultyLevel::Easy,
                 },
-                
+
                 // Control Flow - Medium
                 ReasoningProblem {
                     id: "code_004".to_string(),
@@ -178,7 +178,7 @@ impl TestDatasets {
                     category: ProblemCategory::Programming,
                     difficulty: DifficultyLevel::Medium,
                 },
-                
+
                 // Data Structures - Medium
                 ReasoningProblem {
                     id: "code_006".to_string(),
@@ -194,7 +194,7 @@ impl TestDatasets {
                     category: ProblemCategory::Programming,
                     difficulty: DifficultyLevel::Medium,
                 },
-                
+
                 // Algorithm Analysis - Hard
                 ReasoningProblem {
                     id: "code_008".to_string(),
@@ -210,7 +210,7 @@ impl TestDatasets {
                     category: ProblemCategory::Programming,
                     difficulty: DifficultyLevel::Hard,
                 },
-                
+
                 // Error Detection - Hard
                 ReasoningProblem {
                     id: "code_010".to_string(),
@@ -250,7 +250,7 @@ impl TestDatasets {
                     category: ProblemCategory::Logic,
                     difficulty: DifficultyLevel::Easy,
                 },
-                
+
                 // Conditional Logic - Medium
                 ReasoningProblem {
                     id: "logic_004".to_string(),
@@ -266,7 +266,7 @@ impl TestDatasets {
                     category: ProblemCategory::Logic,
                     difficulty: DifficultyLevel::Medium,
                 },
-                
+
                 // Set Logic - Medium
                 ReasoningProblem {
                     id: "logic_006".to_string(),
@@ -275,7 +275,7 @@ impl TestDatasets {
                     category: ProblemCategory::Logic,
                     difficulty: DifficultyLevel::Medium,
                 },
-                
+
                 // Complex Logic - Hard
                 ReasoningProblem {
                     id: "logic_007".to_string(),

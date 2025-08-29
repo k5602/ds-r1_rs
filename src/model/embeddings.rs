@@ -135,7 +135,6 @@ pub struct RotaryEmbedding {
     sin_cache: Vec<Vec<f32>>,
     head_dim: usize,
     max_seq_len: usize,
-    theta: f32,
 }
 
 impl RotaryEmbedding {
@@ -184,7 +183,6 @@ impl RotaryEmbedding {
             sin_cache,
             head_dim,
             max_seq_len,
-            theta,
         })
     }
 

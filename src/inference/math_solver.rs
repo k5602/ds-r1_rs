@@ -239,6 +239,11 @@ impl MathProblemSolver {
         }
     }
 
+    /// Access the internal reasoning engine
+    pub fn reasoning_engine(&self) -> &ReasoningEngine {
+        &self.reasoning_engine
+    }
+
     /// Detect the type of mathematical problem
     pub fn detect_problem_type(&self, problem: &str) -> MathProblemType {
         let lower_problem = problem.to_lowercase();
@@ -563,7 +568,7 @@ impl MathProblemSolver {
     /// Extract numbers and operation from arithmetic problem
     fn extract_arithmetic_components(&self, problem: &str) -> Result<(Vec<f64>, String)> {
         let lower_problem = problem.to_lowercase();
-        let mut numbers = Vec::new();
+        let mut numbers = self.extract_all_numbers_from_text(problem);
         let mut operation = String::new();
 
         // Determine operation first
@@ -589,9 +594,6 @@ impl MathProblemSolver {
         {
             operation = "/".to_string();
         }
-
-        // Extract numbers from the problem text
-        numbers = self.extract_all_numbers_from_text(problem);
 
         // If we still don't have enough numbers, try number words
         if numbers.len() < 2 {

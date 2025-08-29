@@ -205,58 +205,71 @@ impl Tokenizer {
     pub fn decode(&self, token_ids: &[u32]) -> Result<String> {
         let mut text = String::new();
         let mut pending_bytes: Vec<u8> = Vec::new();
+        let mut bpe_ranks: Vec<u32> = Vec::new();
 
-        let flush_bytes = |bytes: &mut Vec<u8>, dst: &mut String| {
+        let mut flush_bytes = |bytes: &mut Vec<u8>, dst: &mut String| {
             if !bytes.is_empty() {
                 let s = String::from_utf8_lossy(bytes);
                 dst.push_str(&s);
                 bytes.clear();
             }
         };
+        let mut flush_bpe = |ranks: &mut Vec<u32>, dst: &mut String| -> Result<()> {
+            if !ranks.is_empty() {
+                let piece = self
+                    .bpe
+                    .decode(ranks.clone())
+                    .map_err(|e| ModelError::Tokenization(format!("BPE decode failed: {e}")))?;
+                dst.push_str(&piece);
+                ranks.clear();
+            }
+            Ok(())
+        };
 
         for &id in token_ids {
-            // Skip non-text specials
+            // Skip non-text specials (separate BPE segments)
             if id == self.pad_id || id == self.bos_id || id == self.eos_id {
+                flush_bpe(&mut bpe_ranks, &mut text)?;
                 continue;
             }
 
             // Thinking tokens are preserved literally
             if id == self.think_start_id {
+                flush_bpe(&mut bpe_ranks, &mut text)?;
                 flush_bytes(&mut pending_bytes, &mut text);
                 text.push_str(&self.config.think_start_token);
                 continue;
             }
             if id == self.think_end_id {
+                flush_bpe(&mut bpe_ranks, &mut text)?;
                 flush_bytes(&mut pending_bytes, &mut text);
                 text.push_str(&self.config.think_end_token);
                 continue;
             }
 
             if self.is_byte_token(id) {
+                // bytes interrupt BPE segments
+                flush_bpe(&mut bpe_ranks, &mut text)?;
                 let b = (id - self.byte_min_id) as u8;
                 pending_bytes.push(b);
                 continue;
             }
 
-            // Mapped BPE range
+            // Mapped BPE range: accumulate ranks and decode together when sequence ends
             if self.is_bpe_token(id) {
-                flush_bytes(&mut pending_bytes, &mut text);
-
                 let rank = id - self.bpe_base_id;
-                let piece = self
-                    .bpe
-                    .decode(vec![rank])
-                    .map_err(|e| ModelError::Tokenization(format!("BPE decode failed: {e}")))?;
-                text.push_str(&piece);
+                bpe_ranks.push(rank);
                 continue;
             }
 
-            // Unknown ID: flush bytes and append unk literal
+            // Unknown ID: end any ongoing segments and append unk literal
+            flush_bpe(&mut bpe_ranks, &mut text)?;
             flush_bytes(&mut pending_bytes, &mut text);
             text.push_str(&self.config.unk_token);
         }
 
-        // Flush any trailing bytes
+        // Flush any trailing segments
+        flush_bpe(&mut bpe_ranks, &mut text)?;
         if !pending_bytes.is_empty() {
             let s = String::from_utf8_lossy(&pending_bytes);
             text.push_str(&s);
