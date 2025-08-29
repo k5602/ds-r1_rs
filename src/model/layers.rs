@@ -13,7 +13,7 @@ use crate::model::moe::MoELayer;
 /// Attention implementation variants integrated in the Transformer layer
 pub enum AttentionImpl {
     Standard(StandardAttention),
-    MLA(MLAAttention),
+    MLA(Box<MLAAttention>),
 }
 
 /// Feed-forward implementation variants integrated in the Transformer layer
@@ -336,6 +336,7 @@ impl TransformerLayer {
 /// Factory-style constructors for mixed-depth stacks
 impl TransformerLayer {
     /// Build a layer with explicit attention/FF kinds
+    #[allow(clippy::too_many_arguments)]
     pub fn new_with_kinds(
         hidden_size: usize,
         num_heads: usize,
@@ -375,14 +376,14 @@ impl TransformerLayer {
                         "kv_compression_ratio must be in (0,1) for MLA".to_string(),
                     ));
                 }
-                AttentionImpl::MLA(MLAAttention::new(
+                AttentionImpl::MLA(Box::new(MLAAttention::new(
                     hidden_size,
                     num_heads,
                     kv_compression_ratio,
                     max_seq_len,
                     rope_theta,
                     layer_norm_eps,
-                )?)
+                )?))
             }
         };
 
@@ -424,6 +425,7 @@ impl TransformerLayer {
 
     /// Build a vector of layers with periodic MLA/MoE patterns.
     /// Example: mla_every = Some(3) -> every 3rd layer uses MLA; otherwise uses attention_default.
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
     pub fn build_layers_mixed(
         num_layers: usize,
         hidden_size: usize,
@@ -446,15 +448,15 @@ impl TransformerLayer {
                 "num_layers must be greater than 0".to_string(),
             ));
         }
-        if let Some(n) = mla_every {
-            if n == 0 {
-                return Err(ModelError::Config("mla_every must be >= 1".to_string()));
-            }
+        if let Some(n) = mla_every
+            && n == 0
+        {
+            return Err(ModelError::Config("mla_every must be >= 1".to_string()));
         }
-        if let Some(n) = moe_every {
-            if n == 0 {
-                return Err(ModelError::Config("moe_every must be >= 1".to_string()));
-            }
+        if let Some(n) = moe_every
+            && n == 0
+        {
+            return Err(ModelError::Config("moe_every must be >= 1".to_string()));
         }
 
         let mut layers = Vec::with_capacity(num_layers);

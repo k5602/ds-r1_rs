@@ -208,6 +208,7 @@ impl MLAAttention {
     }
 
     /// Split tensor into rotary and non-rotary components for MLA
+    #[allow(clippy::type_complexity)]
     fn split_rotary_components(
         &self,
         tensor: &[Vec<f32>],
@@ -297,16 +298,13 @@ impl MLAAttention {
                 let rotary_head_start = head * rotary_dim;
                 let non_rotary_head_start = head * non_rotary_dim;
 
-                // Copy rotary part
-                for i in 0..rotary_dim {
-                    combined_seq[head_start + i] = rotary_seq[rotary_head_start + i];
-                }
-
-                // Copy non-rotary part
-                for i in 0..non_rotary_dim {
-                    combined_seq[head_start + rotary_dim + i] =
-                        non_rotary_seq[non_rotary_head_start + i];
-                }
+                // Copy rotary and non-rotary parts
+                combined_seq[head_start..head_start + rotary_dim].copy_from_slice(
+                    &rotary_seq[rotary_head_start..rotary_head_start + rotary_dim],
+                );
+                combined_seq[head_start + rotary_dim..head_start + self.head_dim].copy_from_slice(
+                    &non_rotary_seq[non_rotary_head_start..non_rotary_head_start + non_rotary_dim],
+                );
             }
 
             result.push(combined_seq);
@@ -317,6 +315,7 @@ impl MLAAttention {
 
     /// Apply rotary embeddings to MLA query and key tensors
     /// This splits tensors, applies rotary to appropriate parts, and recombines
+    #[allow(clippy::type_complexity)]
     pub fn apply_mla_rotary(
         &self,
         queries: &[Vec<f32>],
@@ -370,17 +369,16 @@ impl MLAAttention {
     }
 
     /// Apply causal mask to attention scores
-    fn apply_causal_mask(&self, scores: &mut Vec<Vec<f32>>) {
-        let seq_len = scores.len();
-        for i in 0..seq_len {
-            for j in (i + 1)..seq_len {
-                scores[i][j] = f32::NEG_INFINITY;
+    fn apply_causal_mask(&self, scores: &mut [Vec<f32>]) {
+        for (i, row) in scores.iter_mut().enumerate() {
+            for v in row.iter_mut().skip(i + 1) {
+                *v = f32::NEG_INFINITY;
             }
         }
     }
 
     /// Apply softmax to attention scores
-    fn softmax(&self, scores: &mut Vec<Vec<f32>>) -> Result<()> {
+    fn softmax(&self, scores: &mut [Vec<f32>]) -> Result<()> {
         for row in scores {
             // Find max for numerical stability
             let max_val = row.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
@@ -731,17 +729,16 @@ impl StandardAttention {
     }
 
     /// Apply causal mask to attention scores
-    fn apply_causal_mask(&self, scores: &mut Vec<Vec<f32>>) {
-        let seq_len = scores.len();
-        for i in 0..seq_len {
-            for j in (i + 1)..seq_len {
-                scores[i][j] = f32::NEG_INFINITY;
+    fn apply_causal_mask(&self, scores: &mut [Vec<f32>]) {
+        for (i, row) in scores.iter_mut().enumerate() {
+            for v in row.iter_mut().skip(i + 1) {
+                *v = f32::NEG_INFINITY;
             }
         }
     }
 
     /// Apply softmax to attention scores
-    fn softmax(&self, scores: &mut Vec<Vec<f32>>) -> Result<()> {
+    fn softmax(&self, scores: &mut [Vec<f32>]) -> Result<()> {
         for row in scores {
             // Find max for numerical stability
             let max_val = row.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
@@ -876,7 +873,7 @@ impl StandardAttention {
     /// Incremental decoding step with per-head KV cache.
     /// - x_t: current token hidden input [hidden_size]
     /// - position: zero-based position in the sequence (should equal current cache length)
-    /// Returns: output vector [hidden_size] for this token position.
+    /// Returns: concatenated per-head context projected back to the hidden space; a Vec<f32> of length hidden_size for this token position.
     pub fn forward_next(
         &self,
         cache: &mut StandardAttentionCache,
@@ -934,8 +931,7 @@ impl StandardAttention {
             let seq_len = cache.k[head].len();
             let mut scores = vec![0.0f32; seq_len];
 
-            for t in 0..seq_len {
-                let k_t = &cache.k[head][t];
+            for (t, k_t) in cache.k[head].iter().enumerate() {
                 let mut dot = 0.0f32;
                 for i in 0..self.head_dim {
                     dot += q_rot[i] * k_t[i];
@@ -962,18 +958,14 @@ impl StandardAttention {
 
             // Weighted sum over cached V
             let mut ctx = vec![0.0f32; self.head_dim];
-            for t in 0..seq_len {
-                let weight = scores[t];
-                let v_t = &cache.v[head][t];
+            for (&weight, v_t) in scores.iter().zip(&cache.v[head]) {
                 for i in 0..self.head_dim {
                     ctx[i] += weight * v_t[i];
                 }
             }
 
             // Write head context into concatenated buffer
-            for i in 0..self.head_dim {
-                concat[start + i] = ctx[i];
-            }
+            concat[start..end].copy_from_slice(&ctx[..self.head_dim]);
         }
 
         // Final output projection

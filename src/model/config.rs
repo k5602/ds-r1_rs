@@ -141,19 +141,19 @@ impl ModelConfig {
         }
 
         // Periodic patterns, if provided, must be >= 1
-        if let Some(n) = self.mla_every {
-            if n == 0 {
-                return Err(ModelError::Config(
-                    "mla_every must be >= 1 when specified".to_string(),
-                ));
-            }
+        if let Some(n) = self.mla_every
+            && n == 0
+        {
+            return Err(ModelError::Config(
+                "mla_every must be >= 1 when specified".to_string(),
+            ));
         }
-        if let Some(n) = self.moe_every {
-            if n == 0 {
-                return Err(ModelError::Config(
-                    "moe_every must be >= 1 when specified".to_string(),
-                ));
-            }
+        if let Some(n) = self.moe_every
+            && n == 0
+        {
+            return Err(ModelError::Config(
+                "moe_every must be >= 1 when specified".to_string(),
+            ));
         }
 
         // MoE configuration sanity

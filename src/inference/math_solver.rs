@@ -945,19 +945,18 @@ impl MathProblemSolver {
                     }
                 }
                 // Handle coefficient*x - constant = value
-                else if left.contains("x-") {
-                    if let Some(x_pos) = left.find("x-") {
-                        let coeff_str = &left[..x_pos];
-                        let const_str = &left[x_pos + 2..];
+                else if left.contains("x-")
+                    && let Some(x_pos) = left.find("x-")
+                {
+                    let coeff_str = &left[..x_pos];
+                    let const_str = &left[x_pos + 2..];
 
-                        if let (Ok(coefficient), Ok(constant)) =
-                            (coeff_str.parse::<f64>(), const_str.parse::<f64>())
-                        {
-                            if coefficient != 0.0 {
-                                let x_value = (right_val + constant) / coefficient;
-                                return Ok(format!("x = {}", x_value));
-                            }
-                        }
+                    if let (Ok(coefficient), Ok(constant)) =
+                        (coeff_str.parse::<f64>(), const_str.parse::<f64>())
+                        && coefficient != 0.0
+                    {
+                        let x_value = (right_val + constant) / coefficient;
+                        return Ok(format!("x = {}", x_value));
                     }
                 }
             }
