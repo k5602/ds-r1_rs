@@ -15,8 +15,8 @@ Typical usage in a model:
 - Expose parameters via `parameters_mut()` (returns `Vec<ParameterMut>`)
 - Or provide a convenience iterator `for_each_parameter(|name, slice| { ... })`
 - Use stable names like:
-  - "embeddings.weight[`<row>`]"
-  - "lm_head.weight[`<row>`]"
+  - "embeddings.weight\[row]"
+  - "lm_head.weight\[row]"
   - "lm_head.bias"
 */
 
