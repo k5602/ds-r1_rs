@@ -168,10 +168,10 @@ fn test_problem_solving_with_dataset(
     let equation_problems = dataset.get_problems_by_type(&MathProblemType::Equation);
 
     let test_problems = [
-        arithmetic_problems.get(0),
-        algebra_problems.get(0),
-        word_problems.get(0),
-        equation_problems.get(0),
+        arithmetic_problems.first(),
+        algebra_problems.first(),
+        word_problems.first(),
+        equation_problems.first(),
     ];
 
     for (i, problem_opt) in test_problems.iter().enumerate() {

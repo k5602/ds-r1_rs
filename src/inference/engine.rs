@@ -377,9 +377,7 @@ impl InferenceEngine {
             if ch.is_ascii_digit() || (ch == '.' && found_digit && !number_str.contains('.')) {
                 number_str.push(ch);
                 found_digit = true;
-            } else if found_digit {
-                break;
-            } else if !ch.is_whitespace() {
+            } else if found_digit || !ch.is_whitespace() {
                 break;
             }
         }

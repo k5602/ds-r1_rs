@@ -21,20 +21,47 @@ fn make_prompt(len: usize) -> String {
 fn bench_decoding(c: &mut Criterion) {
     // Compare decoding throughput (tokens/sec) without cache vs with cache
     // using varying prompt lengths.
-    let prompt_lens = [64usize, 128, 256];
-    let gen_tokens = 128usize;
+    let quick = std::env::var("DS_BENCH_QUICK")
+        .ok()
+        .map(|v| v != "0")
+        .unwrap_or(false);
+    let prompt_lens: Vec<usize> = if quick { vec![8] } else { vec![32, 64, 128] };
+    let gen_tokens = if quick { 8usize } else { 96usize };
 
     let mut group = c.benchmark_group("decoding_tokens_per_sec");
     group.sample_size(10);
-    group.warm_up_time(std::time::Duration::from_millis(500));
-    group.measurement_time(std::time::Duration::from_secs(10));
+    group.warm_up_time(std::time::Duration::from_millis(if quick {
+        50
+    } else {
+        200
+    }));
+    group.measurement_time(std::time::Duration::from_secs(if quick { 1 } else { 3 }));
 
     for &prompt_len in &prompt_lens {
         // Shared components per prompt length to avoid measuring init cost.
-        let model_config = ModelConfig::default();
+        let model_config = if quick {
+            ModelConfig {
+                vocab_size: 1024,
+                hidden_size: 64,
+                num_layers: 2,
+                num_heads: 4,
+                intermediate_size: 256,
+                max_seq_len: 256,
+                ..ModelConfig::default()
+            }
+        } else {
+            ModelConfig::default()
+        };
         let mut model = DeepSeekR1Model::new(model_config).expect("model init failed");
 
-        let tok_cfg = TokenizerConfig::default();
+        let tok_cfg = if quick {
+            TokenizerConfig {
+                vocab_size: 1024,
+                ..TokenizerConfig::default()
+            }
+        } else {
+            TokenizerConfig::default()
+        };
         let tokenizer = Tokenizer::new(tok_cfg).expect("tokenizer init failed");
 
         let sampling_cfg = SamplingConfig::default();
@@ -54,20 +81,22 @@ fn bench_decoding(c: &mut Criterion) {
         // Use throughput based on number of tokens generated per iteration.
         group.throughput(Throughput::Elements(gen_tokens as u64));
 
-        // Baseline: no cache (recomputes full prefix each step)
-        group.bench_with_input(BenchmarkId::new("no_cache", prompt_len), &prompt, |b, p| {
-            b.iter(|| {
-                let output = generator
-                    .generate(
-                        black_box(&mut model),
-                        black_box(&tokenizer),
-                        black_box(p),
-                        black_box(&gen_cfg),
-                    )
-                    .expect("generation (no_cache) failed");
-                black_box(output.tokens_generated);
+        // Baseline: no cache (recomputes full prefix each step) - skip in quick mode
+        if !quick {
+            group.bench_with_input(BenchmarkId::new("no_cache", prompt_len), &prompt, |b, p| {
+                b.iter(|| {
+                    let output = generator
+                        .generate(
+                            black_box(&mut model),
+                            black_box(&tokenizer),
+                            black_box(p),
+                            black_box(&gen_cfg),
+                        )
+                        .expect("generation (no_cache) failed");
+                    black_box(output.tokens_generated);
+                });
             });
-        });
+        }
 
         // With cache: true incremental decoding
         group.bench_with_input(

@@ -4,7 +4,7 @@
 
 use ds_r1_rs::model::{DeepSeekR1Model, ModelConfig};
 use ds_r1_rs::training::{
-    BasicTrainer, DataLoader, OptimizerConfig, ProblemType, RLTrainer, SyntheticDataGenerator,
+    BasicTrainer, DataLoader, OptimizerConfig, RLTrainer, SyntheticDataGenerator,
     TrainingBatch, TrainingExample,
 };
 

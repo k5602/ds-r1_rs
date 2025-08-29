@@ -231,7 +231,7 @@ impl<'a> ParameterRegistryMut<'a> {
 }
 
 /// Convenience helpers to collect parameters from common containers.
-
+///
 /// Create a single immutable parameter reference from a Vec<f32>.
 pub fn single_ref<'a, N: Into<String>>(name: N, v: &'a Vec<f32>) -> ParameterRef<'a> {
     ParameterRef::new(name, v.as_slice())

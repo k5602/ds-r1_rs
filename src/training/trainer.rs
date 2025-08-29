@@ -2,6 +2,7 @@
 //!
 //! Basic trainer implementations for supervised and reinforcement learning.
 
+#![allow(dead_code)]
 use crate::model::DeepSeekR1Model;
 use crate::training::data::{TrainingBatch, TrainingExample};
 use crate::training::loss::{CrossEntropyLoss, LossFunction, TrainingMetrics};

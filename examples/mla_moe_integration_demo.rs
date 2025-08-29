@@ -1,4 +1,4 @@
-use ds_r1_rs::model::config::{AttentionType, FeedForwardType, ModelConfig};
+use ds_r1_rs::model::config::{AttentionType, ModelConfig};
 use ds_r1_rs::model::transformer::DeepSeekR1Model;
 use std::env;
 use std::path::Path;

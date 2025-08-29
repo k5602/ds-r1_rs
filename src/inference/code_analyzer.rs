@@ -306,10 +306,11 @@ impl CodeAnalyzer {
     fn analyze_space_complexity(&self, code: &str) -> Complexity {
         let code_lower = code.to_lowercase();
 
-        if code_lower.contains("recursive") {
-            Complexity::Linear // Stack space for recursion
-        } else if code_lower.contains("vec!") || code_lower.contains("array") {
-            Complexity::Linear // Additional data structures
+        if code_lower.contains("recursive")
+            || code_lower.contains("vec!")
+            || code_lower.contains("array")
+        {
+            Complexity::Linear // Stack or additional data structures
         } else {
             Complexity::Constant // In-place operations
         }

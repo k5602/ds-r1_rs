@@ -126,6 +126,7 @@ pub struct MLAAttention {
     /// Compressed KV dimension
     compressed_kv_dim: usize,
     /// Dropout probability
+    #[allow(dead_code)]
     dropout_prob: f32,
 }
 
@@ -681,6 +682,7 @@ pub struct StandardAttention {
     /// Hidden dimension
     hidden_size: usize,
     /// Dropout probability
+    #[allow(dead_code)]
     dropout_prob: f32,
 }
 
@@ -1373,7 +1375,7 @@ mod tests {
         let num_heads = 8;
 
         // Standard attention uses full KV representations
-        let standard = StandardAttention::new(hidden_size, num_heads, 2048, 10000.0).unwrap();
+        let _standard = StandardAttention::new(hidden_size, num_heads, 2048, 10000.0).unwrap();
 
         // MLA uses compressed KV representations
         let mla = MLAAttention::new_default(hidden_size, num_heads, 0.5).unwrap();
@@ -1738,7 +1740,7 @@ mod tests {
         let num_heads = 8;
         let seq_len = 200;
 
-        let standard = StandardAttention::new(hidden_size, num_heads, 2048, 10000.0).unwrap();
+        let _standard = StandardAttention::new(hidden_size, num_heads, 2048, 10000.0).unwrap();
         let mla = MLAAttention::new_default(hidden_size, num_heads, 0.5).unwrap();
 
         // Calculate memory usage for both

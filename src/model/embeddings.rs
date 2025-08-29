@@ -293,7 +293,6 @@ mod tests {
         let input_ids = vec![0];
 
         let embeddings = embedding.forward(&input_ids).unwrap();
-        let scale = (64.0_f32).sqrt();
 
         // Check that embeddings are scaled (this is a rough check)
         let sum_of_squares: f32 = embeddings[0].iter().map(|x| x * x).sum();
@@ -324,6 +323,7 @@ mod tests {
                 }
             }
         }
+        assert!(has_zeros || has_scaled);
     }
 
     #[test]

@@ -704,10 +704,11 @@ impl MathProblemSolver {
             for (i, word) in parts.iter().enumerate() {
                 if let Ok(num) = word.parse::<f64>() {
                     numbers.push(num);
-                } else if word.to_lowercase() == "by" && i + 1 < parts.len() {
-                    if let Ok(num) = parts[i + 1].parse::<f64>() {
-                        numbers.push(num);
-                    }
+                } else if word.to_lowercase() == "by"
+                    && i + 1 < parts.len()
+                    && let Ok(num) = parts[i + 1].parse::<f64>()
+                {
+                    numbers.push(num);
                 }
             }
         }
@@ -783,12 +784,8 @@ impl MathProblemSolver {
         // Look for explicit equations with equals sign
         if let Some(eq_pos) = problem.find('=') {
             // Extract a reasonable window around the equals sign
-            let start = if eq_pos >= 10 { eq_pos - 10 } else { 0 };
-            let end = if eq_pos + 10 < problem.len() {
-                eq_pos + 10
-            } else {
-                problem.len()
-            };
+            let start = eq_pos.saturating_sub(10);
+            let end = (eq_pos + 10).min(problem.len());
 
             let window = &problem[start..end];
 
@@ -901,22 +898,21 @@ impl MathProblemSolver {
 
             if let Ok(right_val) = right.parse::<f64>() {
                 // Handle x + constant = value
-                if left.starts_with("x+") {
-                    if let Ok(constant) = left[2..].parse::<f64>() {
+                if let Some(rest) = left.strip_prefix("x+") {
+                    if let Ok(constant) = rest.parse::<f64>() {
                         let x_value = right_val - constant;
                         return Ok(format!("x = {}", x_value));
                     }
                 }
                 // Handle x - constant = value
-                else if left.starts_with("x-") {
-                    if let Ok(constant) = left[2..].parse::<f64>() {
+                else if let Some(rest) = left.strip_prefix("x-") {
+                    if let Ok(constant) = rest.parse::<f64>() {
                         let x_value = right_val + constant;
                         return Ok(format!("x = {}", x_value));
                     }
                 }
                 // Handle coefficient*x = value
-                else if left.ends_with("x") && left.len() > 1 {
-                    let coeff_str = &left[..left.len() - 1];
+                else if let Some(coeff_str) = left.strip_suffix('x') {
                     if let Ok(coefficient) = coeff_str.parse::<f64>() {
                         if coefficient != 0.0 {
                             let x_value = right_val / coefficient;
@@ -1179,9 +1175,7 @@ impl MathProblemSolver {
                 decimal_used = true;
             } else if ch == '-' && !found_digit && number_str.is_empty() {
                 number_str.push(ch);
-            } else if found_digit {
-                break;
-            } else if !ch.is_whitespace() {
+            } else if found_digit || !ch.is_whitespace() {
                 break;
             }
         }
@@ -1202,7 +1196,7 @@ impl MathProblemSolver {
             // Remove common punctuation
             let clean_word = word.trim_matches(|c: char| c.is_ascii_punctuation());
 
-            if let Ok(_) = clean_word.parse::<f64>() {
+            if clean_word.parse::<f64>().is_ok() {
                 last_number = Some(clean_word.to_string());
                 break;
             }
@@ -1239,8 +1233,7 @@ impl MathProblemSolver {
         }
 
         // Check for algebraic solutions like "x = 4"
-        if trimmed.starts_with("x = ") {
-            let number_part = &trimmed[4..];
+        if let Some(number_part) = trimmed.strip_prefix("x = ") {
             return number_part.parse::<f64>().is_ok();
         }
 
@@ -1253,8 +1246,7 @@ impl MathProblemSolver {
         }
 
         // Check for percentages like "25%"
-        if trimmed.ends_with('%') {
-            let number_part = &trimmed[..trimmed.len() - 1];
+        if let Some(number_part) = trimmed.strip_suffix('%') {
             return number_part.parse::<f64>().is_ok();
         }
 

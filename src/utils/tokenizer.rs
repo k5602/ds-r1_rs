@@ -207,20 +207,19 @@ impl Tokenizer {
         let mut pending_bytes: Vec<u8> = Vec::new();
         let mut bpe_ranks: Vec<u32> = Vec::new();
 
-        let mut flush_bytes = |bytes: &mut Vec<u8>, dst: &mut String| {
+        let flush_bytes = |bytes: &mut Vec<u8>, dst: &mut String| {
             if !bytes.is_empty() {
                 let s = String::from_utf8_lossy(bytes);
                 dst.push_str(&s);
                 bytes.clear();
             }
         };
-        let mut flush_bpe = |ranks: &mut Vec<u32>, dst: &mut String| -> Result<()> {
+        let flush_bpe = |ranks: &mut Vec<u32>, dst: &mut String| -> Result<()> {
             if !ranks.is_empty() {
-                let piece = self
-                    .bpe
-                    .decode(ranks.clone())
-                    .map_err(|e| ModelError::Tokenization(format!("BPE decode failed: {e}")))?;
-                dst.push_str(&piece);
+                match self.bpe.decode(ranks.clone()) {
+                    Ok(piece) => dst.push_str(&piece),
+                    Err(_) => dst.push('\u{FFFD}'),
+                }
                 ranks.clear();
             }
             Ok(())
@@ -338,15 +337,16 @@ impl Tokenizer {
         // Use ordinary encoding to avoid interference from OpenAI’s built-in specials
         let ranks = self.bpe.encode_ordinary(text);
 
-        let mapped_limit = self.bpe_mapped_count; // number of ranks we can map into vocab
-        for rank in ranks {
+        let mapped_limit = self.bpe_mapped_count;
+        let pieces = self
+            .bpe
+            .split_by_token_ordinary(text)
+            .map_err(|e| ModelError::Tokenization(format!("BPE split failed: {e}")))?;
+        for (rank, piece) in ranks.into_iter().zip(pieces.into_iter()) {
             if rank < mapped_limit {
                 out.push(self.bpe_base_id + rank);
             } else {
-                // Fallback: decode the piece and emit per-byte tokens
-                let piece = self.bpe.decode(vec![rank]).map_err(|e| {
-                    ModelError::Tokenization(format!("BPE piece decode failed: {e}"))
-                })?;
+                // Fallback: emit per-byte tokens for the piece
                 self.push_bytes(piece.as_bytes(), out);
             }
         }

@@ -152,18 +152,18 @@ impl TextGenerator {
             }
 
             // Check for EOS token
-            if let Ok(eos_id) = tokenizer.eos_token_id() {
-                if next_token == eos_id {
-                    let generated_text =
-                        self.decode_generated_tokens(tokenizer, &token_ids[original_length..])?;
-                    let elapsed = start_time.elapsed().as_millis() as u64;
-                    return Ok(GenerationOutput::new(
-                        generated_text,
-                        tokens_generated,
-                        StopReason::EndOfSequence,
-                    )
-                    .with_time(elapsed));
-                }
+            if let Ok(eos_id) = tokenizer.eos_token_id()
+                && next_token == eos_id
+            {
+                let generated_text =
+                    self.decode_generated_tokens(tokenizer, &token_ids[original_length..])?;
+                let elapsed = start_time.elapsed().as_millis() as u64;
+                return Ok(GenerationOutput::new(
+                    generated_text,
+                    tokens_generated,
+                    StopReason::EndOfSequence,
+                )
+                .with_time(elapsed));
             }
 
             // Add token to sequence
@@ -241,11 +241,11 @@ impl TextGenerator {
             }
 
             // EOS handling: do not include EOS in the output
-            if let Ok(eos_id) = tokenizer.eos_token_id() {
-                if next_token == eos_id {
-                    stop_reason = StopReason::EndOfSequence;
-                    break;
-                }
+            if let Ok(eos_id) = tokenizer.eos_token_id()
+                && next_token == eos_id
+            {
+                stop_reason = StopReason::EndOfSequence;
+                break;
             }
 
             // Accept next token and continue
@@ -318,10 +318,10 @@ impl TextGenerator {
             }
 
             // Check for EOS token
-            if let Ok(eos_id) = tokenizer.eos_token_id() {
-                if next_token == eos_id {
-                    break;
-                }
+            if let Ok(eos_id) = tokenizer.eos_token_id()
+                && next_token == eos_id
+            {
+                break;
             }
 
             // Add token to sequence
