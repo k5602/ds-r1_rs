@@ -3,7 +3,7 @@ name: Docs
 on:
   push:
     branches:
-      - main
+      - master
   workflow_dispatch:
 
 permissions:
@@ -42,7 +42,6 @@ jobs:
             ds-r1_rs
 
       - name: Build cargo docs
-        working-directory: ds-r1_rs
         env:
           RUSTDOCFLAGS: -D warnings
         run: |
@@ -66,7 +65,7 @@ jobs:
       - name: Upload artifact to Pages
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ds-r1_rs/target/doc
+          path: target/doc
 
   deploy:
     name: Deploy to GitHub Pages
