@@ -5,14 +5,43 @@
 use crate::model::attention::Linear;
 use crate::utils::error::{ModelError, Result};
 use rand::Rng;
+use std::cell::RefCell;
+
+use crate::model::attention::{MLAAttention, StandardAttention};
+use crate::model::moe::MoELayer;
+
+/// Attention implementation variants integrated in the Transformer layer
+pub enum AttentionImpl {
+    Standard(StandardAttention),
+    MLA(Box<MLAAttention>),
+}
+
+/// Feed-forward implementation variants integrated in the Transformer layer
+pub enum FfImpl {
+    Dense(FeedForward),
+    MoE(RefCell<MoELayer>),
+}
+
+/// Builder toggles for constructing layers
+#[derive(Debug, PartialEq, Clone)]
+pub enum AttentionKind {
+    Standard,
+    MLA,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum FeedForwardKind {
+    Dense,
+    MoE,
+}
 
 /// Transformer layer combining attention and feed-forward with residual connections
 /// Uses pre-normalization architecture (LayerNorm before attention/FFN)
 pub struct TransformerLayer {
     /// Self-attention mechanism
-    attention: crate::model::attention::StandardAttention,
+    attention: AttentionImpl,
     /// Feed-forward network
-    feed_forward: FeedForward,
+    feed_forward: FfImpl,
     /// Layer normalization before attention
     attention_norm: LayerNorm,
     /// Layer normalization before feed-forward
@@ -38,16 +67,19 @@ impl TransformerLayer {
         }
 
         // Create attention mechanism
-        let attention = crate::model::attention::StandardAttention::new(
+        let attention = AttentionImpl::Standard(StandardAttention::new(
             hidden_size,
             num_heads,
             max_seq_len,
             rope_theta,
-        )?;
+        )?);
 
         // Create feed-forward network
-        let feed_forward =
-            FeedForward::new_with_dropout(hidden_size, intermediate_size, dropout_prob)?;
+        let feed_forward = FfImpl::Dense(FeedForward::new_with_dropout(
+            hidden_size,
+            intermediate_size,
+            dropout_prob,
+        )?);
 
         // Create layer normalizations
         let attention_norm = LayerNorm::new(hidden_size, layer_norm_eps)?;
@@ -138,17 +170,92 @@ impl TransformerLayer {
 
         // Pre-normalization + Self-attention + Residual connection
         let attention_input = self.attention_norm.forward_batch(input)?;
-        let attention_output = self.attention.forward(&attention_input)?;
+        let attention_output = match &self.attention {
+            AttentionImpl::Standard(attn) => attn.forward(&attention_input)?,
+            AttentionImpl::MLA(attn) => attn.forward(&attention_input)?,
+        };
         let after_attention = self.add_residual(input, &attention_output)?;
 
         // Pre-normalization + Feed-forward + Residual connection
         let ffn_input = self.ffn_norm.forward_batch(&after_attention)?;
-        let ffn_output = self
-            .feed_forward
-            .forward_batch_with_training(&ffn_input, training)?;
+        let ffn_output = match &self.feed_forward {
+            FfImpl::Dense(ff) => ff.forward_batch_with_training(&ffn_input, training)?,
+            FfImpl::MoE(moe_cell) => {
+                let mut moe = moe_cell.borrow_mut();
+                moe.forward_batch(&ffn_input)?
+            }
+        };
         let final_output = self.add_residual(&after_attention, &ffn_output)?;
 
         Ok(final_output)
+    }
+
+    /// Incremental forward pass for a single token using pre-norm residuals and KV cache
+    pub fn forward_next(
+        &self,
+        cache: &mut crate::model::attention::StandardAttentionCache,
+        x_t: &[f32],
+        position: usize,
+        training: bool,
+    ) -> Result<Vec<f32>> {
+        if x_t.len() != self.hidden_size {
+            return Err(ModelError::Forward(format!(
+                "Input size {} doesn't match hidden_size {}",
+                x_t.len(),
+                self.hidden_size
+            )));
+        }
+
+        // Pre-normalization before attention
+        let x_norm = self.attention_norm.forward(x_t)?;
+
+        // Incremental attention using per-head KV cache at the given position
+        let attn_out = match &self.attention {
+            AttentionImpl::Standard(attn) => attn.forward_next(cache, &x_norm, position)?,
+            AttentionImpl::MLA(_attn) => {
+                return Err(ModelError::Forward(
+                    "Incremental forward_next not supported for MLA attention".to_string(),
+                ));
+            }
+        };
+
+        if attn_out.len() != x_t.len() {
+            return Err(ModelError::Forward(
+                "Attention output must match input hidden size".to_string(),
+            ));
+        }
+
+        // Residual connection after attention: x + attn_out
+        let mut after_attention = Vec::with_capacity(self.hidden_size);
+        for i in 0..self.hidden_size {
+            after_attention.push(x_t[i] + attn_out[i]);
+        }
+
+        // Pre-normalization before feed-forward
+        let ffn_in = self.ffn_norm.forward(&after_attention)?;
+
+        // Feed-forward with training flag for dropout behavior
+        let ffn_out = match &self.feed_forward {
+            FfImpl::Dense(ff) => ff.forward_with_training(&ffn_in, training)?,
+            FfImpl::MoE(moe_cell) => {
+                let mut moe = moe_cell.borrow_mut();
+                moe.forward(&ffn_in)?
+            }
+        };
+
+        if ffn_out.len() != after_attention.len() {
+            return Err(ModelError::Forward(
+                "FFN output must match residual size".to_string(),
+            ));
+        }
+
+        // Residual connection after feed-forward: (x + attn_out) + ffn_out
+        let mut final_out = Vec::with_capacity(self.hidden_size);
+        for i in 0..self.hidden_size {
+            final_out.push(after_attention[i] + ffn_out[i]);
+        }
+
+        Ok(final_out)
     }
 
     /// Get hidden size
@@ -158,12 +265,240 @@ impl TransformerLayer {
 
     /// Get number of attention heads
     pub fn num_heads(&self) -> usize {
-        self.attention.num_heads()
+        match &self.attention {
+            AttentionImpl::Standard(attn) => attn.num_heads(),
+            AttentionImpl::MLA(attn) => attn.num_heads(),
+        }
     }
 
     /// Get intermediate size
     pub fn intermediate_size(&self) -> usize {
-        self.feed_forward.intermediate_size()
+        match &self.feed_forward {
+            FfImpl::Dense(ff) => ff.intermediate_size(),
+            FfImpl::MoE(moe_cell) => moe_cell.borrow().intermediate_size(),
+        }
+    }
+
+    /// Introspection: which attention kind is used in this layer
+    pub fn attention_kind(&self) -> AttentionKind {
+        match &self.attention {
+            AttentionImpl::Standard(_) => AttentionKind::Standard,
+            AttentionImpl::MLA(_) => AttentionKind::MLA,
+        }
+    }
+
+    /// Introspection: which feed-forward kind is used in this layer
+    pub fn ff_kind(&self) -> FeedForwardKind {
+        match &self.feed_forward {
+            FfImpl::Dense(_) => FeedForwardKind::Dense,
+            FfImpl::MoE(_) => FeedForwardKind::MoE,
+        }
+    }
+
+    /// Telemetry: MLA compression stats (avg_ratio, memory_savings_percent), if MLA is active
+    pub fn mla_compression_stats(&self) -> Option<(f32, f32)> {
+        if let AttentionImpl::MLA(attn) = &self.attention {
+            Some(attn.compression_stats())
+        } else {
+            None
+        }
+    }
+
+    /// Telemetry: MoE expert utilization distribution, if MoE is active
+    pub fn moe_expert_utilization(&self) -> Option<Vec<f32>> {
+        if let FfImpl::MoE(moe_cell) = &self.feed_forward {
+            Some(moe_cell.borrow().get_expert_utilization())
+        } else {
+            None
+        }
+    }
+
+    /// Telemetry: MoE load balance loss (variance), if MoE is active
+    pub fn moe_load_balance_loss(&self) -> Option<f32> {
+        if let FfImpl::MoE(moe_cell) = &self.feed_forward {
+            Some(moe_cell.borrow().get_load_balance_loss())
+        } else {
+            None
+        }
+    }
+
+    /// Telemetry control: reset MoE load balancer counters; returns true if MoE is active
+    pub fn moe_reset_load_balancer(&self) -> bool {
+        if let FfImpl::MoE(moe_cell) = &self.feed_forward {
+            moe_cell.borrow_mut().reset_load_balancer();
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// Factory-style constructors for mixed-depth stacks
+impl TransformerLayer {
+    /// Build a layer with explicit attention/FF kinds
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_kinds(
+        hidden_size: usize,
+        num_heads: usize,
+        intermediate_size: usize,
+        max_seq_len: usize,
+        rope_theta: f32,
+        layer_norm_eps: f32,
+        dropout_prob: f32,
+        attention_kind: AttentionKind,
+        ff_kind: FeedForwardKind,
+        kv_compression_ratio: f32,
+        num_experts: usize,
+        experts_per_token: usize,
+    ) -> Result<Self> {
+        if hidden_size == 0 || num_heads == 0 || intermediate_size == 0 {
+            return Err(ModelError::Config(
+                "All sizes must be greater than 0".to_string(),
+            ));
+        }
+        if hidden_size % num_heads != 0 {
+            return Err(ModelError::Config(
+                "hidden_size must be divisible by num_heads".to_string(),
+            ));
+        }
+
+        // Attention
+        let attention = match attention_kind {
+            AttentionKind::Standard => AttentionImpl::Standard(StandardAttention::new(
+                hidden_size,
+                num_heads,
+                max_seq_len,
+                rope_theta,
+            )?),
+            AttentionKind::MLA => {
+                if !(0.0..1.0).contains(&kv_compression_ratio) {
+                    return Err(ModelError::Config(
+                        "kv_compression_ratio must be in (0,1) for MLA".to_string(),
+                    ));
+                }
+                AttentionImpl::MLA(Box::new(MLAAttention::new(
+                    hidden_size,
+                    num_heads,
+                    kv_compression_ratio,
+                    max_seq_len,
+                    rope_theta,
+                    layer_norm_eps,
+                )?))
+            }
+        };
+
+        // Feed-forward
+        let feed_forward = match ff_kind {
+            FeedForwardKind::Dense => FfImpl::Dense(FeedForward::new_with_dropout(
+                hidden_size,
+                intermediate_size,
+                dropout_prob,
+            )?),
+            FeedForwardKind::MoE => {
+                if experts_per_token == 0 || num_experts == 0 || experts_per_token > num_experts {
+                    return Err(ModelError::Config(
+                        "experts_per_token must be in [1, num_experts] and num_experts > 0"
+                            .to_string(),
+                    ));
+                }
+                let moe = MoELayer::new_with_intermediate_size(
+                    hidden_size,
+                    num_experts,
+                    experts_per_token,
+                    intermediate_size,
+                )?;
+                FfImpl::MoE(RefCell::new(moe))
+            }
+        };
+
+        let attention_norm = LayerNorm::new(hidden_size, layer_norm_eps)?;
+        let ffn_norm = LayerNorm::new(hidden_size, layer_norm_eps)?;
+
+        Ok(Self {
+            attention,
+            feed_forward,
+            attention_norm,
+            ffn_norm,
+            hidden_size,
+        })
+    }
+
+    /// Build a vector of layers with periodic MLA/MoE patterns.
+    /// Example: mla_every = Some(3) -> every 3rd layer uses MLA; otherwise uses attention_default.
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    pub fn build_layers_mixed(
+        num_layers: usize,
+        hidden_size: usize,
+        num_heads: usize,
+        intermediate_size: usize,
+        max_seq_len: usize,
+        rope_theta: f32,
+        layer_norm_eps: f32,
+        dropout_prob: f32,
+        attention_default: AttentionKind,
+        ff_default: FeedForwardKind,
+        mla_every: Option<usize>,
+        moe_every: Option<usize>,
+        kv_compression_ratio: f32,
+        num_experts: usize,
+        experts_per_token: usize,
+    ) -> Result<Vec<Self>> {
+        if num_layers == 0 {
+            return Err(ModelError::Config(
+                "num_layers must be greater than 0".to_string(),
+            ));
+        }
+        if let Some(n) = mla_every
+            && n == 0
+        {
+            return Err(ModelError::Config("mla_every must be >= 1".to_string()));
+        }
+        if let Some(n) = moe_every
+            && n == 0
+        {
+            return Err(ModelError::Config("moe_every must be >= 1".to_string()));
+        }
+
+        let mut layers = Vec::with_capacity(num_layers);
+        for idx in 0..num_layers {
+            let use_mla = mla_every.map(|n| (idx + 1) % n == 0).unwrap_or(false);
+            let use_moe = moe_every.map(|n| (idx + 1) % n == 0).unwrap_or(false);
+
+            let att_kind = if use_mla {
+                AttentionKind::MLA
+            } else {
+                match attention_default {
+                    AttentionKind::Standard => AttentionKind::Standard,
+                    AttentionKind::MLA => AttentionKind::MLA,
+                }
+            };
+
+            let ff_kind = if use_moe {
+                FeedForwardKind::MoE
+            } else {
+                match ff_default {
+                    FeedForwardKind::Dense => FeedForwardKind::Dense,
+                    FeedForwardKind::MoE => FeedForwardKind::MoE,
+                }
+            };
+
+            let layer = Self::new_with_kinds(
+                hidden_size,
+                num_heads,
+                intermediate_size,
+                max_seq_len,
+                rope_theta,
+                layer_norm_eps,
+                dropout_prob,
+                att_kind,
+                ff_kind,
+                kv_compression_ratio,
+                num_experts,
+                experts_per_token,
+            )?;
+            layers.push(layer);
+        }
+        Ok(layers)
     }
 }
 
@@ -890,5 +1225,103 @@ mod tests {
         }
 
         assert!(different, "Feed-forward should be nonlinear");
+    }
+
+    #[test]
+    fn test_transformer_layer_mla_forward_shape_finite() {
+        let layer = TransformerLayer::new_with_kinds(
+            64,
+            4,
+            128,
+            128,
+            10000.0,
+            1e-5,
+            0.0,
+            AttentionKind::MLA,
+            FeedForwardKind::Dense,
+            0.5,
+            4,
+            2,
+        )
+        .unwrap();
+
+        let input = vec![vec![0.1; 64], vec![0.2; 64], vec![0.3; 64]];
+        let output = layer.forward(&input).unwrap();
+
+        assert_eq!(output.len(), input.len());
+        for seq in &output {
+            assert_eq!(seq.len(), 64);
+            for &v in seq {
+                assert!(v.is_finite());
+            }
+        }
+    }
+
+    #[test]
+    fn test_transformer_layer_moe_forward_shape_finite() {
+        let layer = TransformerLayer::new_with_kinds(
+            64,
+            4,
+            128,
+            128,
+            10000.0,
+            1e-5,
+            0.0,
+            AttentionKind::Standard,
+            FeedForwardKind::MoE,
+            0.5,
+            4,
+            2,
+        )
+        .unwrap();
+
+        let input = vec![vec![0.05; 64]; 5];
+        let output = layer.forward(&input).unwrap();
+
+        assert_eq!(output.len(), input.len());
+        for seq in &output {
+            assert_eq!(seq.len(), 64);
+            for &v in seq {
+                assert!(v.is_finite());
+            }
+        }
+    }
+
+    #[test]
+    fn test_transformer_build_layers_mixed_mla_moe() {
+        let layers = TransformerLayer::build_layers_mixed(
+            4,       // num_layers
+            64,      // hidden_size
+            4,       // num_heads
+            128,     // intermediate_size
+            128,     // max_seq_len
+            10000.0, // rope_theta
+            1e-5,    // layer_norm_eps
+            0.0,     // dropout_prob
+            AttentionKind::Standard,
+            FeedForwardKind::Dense,
+            Some(2), // MLA every 2nd layer
+            Some(3), // MoE every 3rd layer
+            0.5,     // kv_compression_ratio
+            4,       // num_experts
+            2,       // experts_per_token
+        )
+        .unwrap();
+
+        assert_eq!(layers.len(), 4);
+
+        let input = vec![vec![0.07; 64]; 3];
+
+        // Run each layer independently to ensure shapes and finiteness
+        for (i, layer) in layers.iter().enumerate() {
+            let out = layer.forward(&input).unwrap();
+            assert_eq!(out.len(), input.len(), "layer {}", i);
+            for seq in &out {
+                assert_eq!(seq.len(), 64, "layer {}", i);
+                for &v in seq {
+                    assert!(v.is_finite(), "layer {}", i);
+                }
+            }
+        }
     }
 }

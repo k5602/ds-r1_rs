@@ -1,0 +1,55 @@
+{
+  "name": "DeepSeek R1 (Rust) Devcontainer",
+  "image": "mcr.microsoft.com/devcontainers/rust:1-bullseye",
+  "remoteUser": "vscode",
+  "overrideCommand": false,
+  "runArgs": [
+    "--cap-add=SYS_PTRACE",
+    "--security-opt",
+    "seccomp=unconfined"
+  ],
+  "containerEnv": {
+    "CARGO_TERM_COLOR": "always",
+    "RUST_BACKTRACE": "1",
+    "CARGO_INCREMENTAL": "0"
+  },
+  "mounts": [
+    "source=devcontainer-cargo-registry,target=/usr/local/cargo/registry,type=volume",
+    "source=devcontainer-cargo-git,target=/usr/local/cargo/git,type=volume"
+  ],
+  "postCreateCommand": [
+    "set -e",
+    "sudo apt-get update",
+    "sudo apt-get install -y --no-install-recommends pkg-config libssl-dev cmake linux-tools-common linux-tools-generic graphviz",
+    "rustup toolchain install stable",
+    "rustup default stable",
+    "rustup component add rustfmt clippy llvm-tools-preview",
+    "cargo install cargo-tarpaulin cargo-criterion cargo-audit",
+    "cargo fetch"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "serayuzgur.crates",
+        "vadimcn.vscode-lldb",
+        "ms-azuretools.vscode-docker",
+        "editorconfig.editorconfig"
+      ],
+      "settings": {
+        "rust-analyzer.cargo.targetDir": "/workspaces/.target",
+        "rust-analyzer.checkOnSave.command": "clippy",
+        "rust-analyzer.procMacro.attributes.enable": true,
+        "rust-analyzer.inlayHints.enable": true,
+        "editor.formatOnSave": true,
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true
+      }
+    }
+  },
+  "features": {},
+  "forwardPorts": [],
+  "portsAttributes": {},
+  "onCreateCommand": ""
+}

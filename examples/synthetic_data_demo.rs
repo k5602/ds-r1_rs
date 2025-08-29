@@ -55,13 +55,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Generated {} mixed examples", mixed_dataset.len());
 
     let mut loader = DataLoader::new(mixed_dataset, 3, true);
-    println!("Batch size: 3, Total batches: {}", loader.batches_per_epoch());
+    println!(
+        "Batch size: 3, Total batches: {}",
+        loader.batches_per_epoch()
+    );
 
     let mut batch_count = 0;
     while let Some(batch) = loader.next_batch() {
         batch_count += 1;
         println!("Batch {}: {} examples", batch_count, batch.batch_size);
-        
+
         let by_type = batch.split_by_type();
         for (problem_type, examples) in by_type {
             println!("  {:?}: {} examples", problem_type, examples.len());

@@ -2,7 +2,7 @@
 //!
 //! Structured mathematical reasoning and problem solving capabilities.
 
-use crate::inference::reasoning::{ReasoningOutput, ReasoningEngine};
+use crate::inference::reasoning::{ReasoningEngine, ReasoningOutput};
 use crate::utils::error::{ModelError, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -86,10 +86,10 @@ impl MathSolution {
     /// Format the solution for display
     pub fn format_solution(&self) -> String {
         let mut output = String::new();
-        
+
         output.push_str(&format!("Problem: {}\n", self.problem));
         output.push_str(&format!("Type: {:?}\n\n", self.problem_type));
-        
+
         output.push_str("Solution Steps:\n");
         for step in &self.reasoning_steps {
             output.push_str(&format!("{}. {}\n", step.step_number, step.description));
@@ -101,30 +101,30 @@ impl MathSolution {
             }
             output.push('\n');
         }
-        
+
         if let Some(answer) = &self.final_answer {
             output.push_str(&format!("Final Answer: {}\n", answer));
         }
-        
+
         if let Some(verification) = &self.verification {
             output.push_str(&format!("Verification: {}\n", verification));
         }
-        
+
         output.push_str(&format!("Confidence: {:.1}%\n", self.confidence * 100.0));
-        
+
         output
     }
 
     /// Format solution with mathematical notation
     pub fn format_solution_with_math_notation(&self) -> String {
         let mut output = String::new();
-        
+
         output.push_str(&format!("📝 Problem: {}\n", self.problem));
         output.push_str(&format!("🔢 Type: {:?}\n\n", self.problem_type));
-        
+
         output.push_str("🧮 Solution Process:\n");
         output.push_str("═══════════════════\n");
-        
+
         for step in &self.reasoning_steps {
             let step_icon = match step.step_type {
                 MathStepType::ProblemAnalysis => "🔍",
@@ -135,9 +135,12 @@ impl MathSolution {
                 MathStepType::Verification => "✅",
                 MathStepType::Conclusion => "🎯",
             };
-            
-            output.push_str(&format!("{} Step {}: {}\n", step_icon, step.step_number, step.description));
-            
+
+            output.push_str(&format!(
+                "{} Step {}: {}\n",
+                step_icon, step.step_number, step.description
+            ));
+
             if let Some(calc) = &step.calculation {
                 output.push_str(&format!("   📐 Work: {}\n", calc));
             }
@@ -146,23 +149,24 @@ impl MathSolution {
             }
             output.push('\n');
         }
-        
+
         if let Some(answer) = &self.final_answer {
             output.push_str(&format!("🎯 Final Answer: {}\n", answer));
         }
-        
+
         if let Some(verification) = &self.verification {
             output.push_str(&format!("✅ Verification: {}\n", verification));
         }
-        
+
         output.push_str(&format!("📊 Confidence: {:.1}%\n", self.confidence * 100.0));
-        
+
         output
     }
 
     /// Convert to ReasoningOutput for compatibility
     pub fn to_reasoning_output(&self) -> ReasoningOutput {
-        let thinking_chain: Vec<String> = self.reasoning_steps
+        let thinking_chain: Vec<String> = self
+            .reasoning_steps
             .iter()
             .map(|step| {
                 let mut step_text = step.description.clone();
@@ -177,7 +181,7 @@ impl MathSolution {
             .collect();
 
         let final_answer = self.final_answer.clone().unwrap_or_default();
-        
+
         ReasoningOutput::new(thinking_chain, final_answer).with_confidence(self.confidence)
     }
 }
@@ -218,7 +222,7 @@ impl MathProblemSolver {
     pub fn new(think_start_token: u32, think_end_token: u32) -> Self {
         let reasoning_engine = ReasoningEngine::new(think_start_token, think_end_token);
         let mut problem_patterns = HashMap::new();
-        
+
         // Initialize problem type patterns
         problem_patterns.insert("add".to_string(), MathProblemType::Arithmetic);
         problem_patterns.insert("subtract".to_string(), MathProblemType::Arithmetic);
@@ -228,72 +232,95 @@ impl MathProblemSolver {
         problem_patterns.insert("equation".to_string(), MathProblemType::Equation);
         problem_patterns.insert("find".to_string(), MathProblemType::Algebra);
         problem_patterns.insert("what is".to_string(), MathProblemType::Arithmetic);
-        
+
         Self {
             reasoning_engine,
             problem_patterns,
         }
     }
 
+    /// Access the internal reasoning engine
+    pub fn reasoning_engine(&self) -> &ReasoningEngine {
+        &self.reasoning_engine
+    }
+
     /// Detect the type of mathematical problem
     pub fn detect_problem_type(&self, problem: &str) -> MathProblemType {
         let lower_problem = problem.to_lowercase();
-        
+
         // Check for equation indicators first (most specific)
-        if lower_problem.contains("=") || lower_problem.contains("solve for") || 
-           lower_problem.contains("find x") || lower_problem.contains("solve:") {
+        if lower_problem.contains("=")
+            || lower_problem.contains("solve for")
+            || lower_problem.contains("find x")
+            || lower_problem.contains("solve:")
+        {
             return MathProblemType::Equation;
         }
-        
+
         // Check for word problem indicators
-        if lower_problem.contains("john") || lower_problem.contains("mary") || 
-           lower_problem.contains("store") || lower_problem.contains("bought") ||
-           lower_problem.contains("students") || lower_problem.contains("apples") ||
-           lower_problem.contains("books") || lower_problem.contains("items") {
+        if lower_problem.contains("john")
+            || lower_problem.contains("mary")
+            || lower_problem.contains("store")
+            || lower_problem.contains("bought")
+            || lower_problem.contains("students")
+            || lower_problem.contains("apples")
+            || lower_problem.contains("books")
+            || lower_problem.contains("items")
+        {
             return MathProblemType::WordProblem;
         }
-        
+
         // Check for algebra indicators (but not if it's clearly arithmetic)
-        if (lower_problem.contains("x") || lower_problem.contains("y") || 
-           lower_problem.contains("variable") || lower_problem.contains("unknown")) &&
-           !self.is_simple_arithmetic(&lower_problem) {
+        if (lower_problem.contains("x")
+            || lower_problem.contains("y")
+            || lower_problem.contains("variable")
+            || lower_problem.contains("unknown"))
+            && !self.is_simple_arithmetic(&lower_problem)
+        {
             return MathProblemType::Algebra;
         }
-        
+
         // Check for arithmetic patterns
         if self.is_simple_arithmetic(&lower_problem) {
             return MathProblemType::Arithmetic;
         }
-        
+
         // Check for arithmetic patterns in problem_patterns
         for (pattern, problem_type) in &self.problem_patterns {
             if lower_problem.contains(pattern) {
                 return problem_type.clone();
             }
         }
-        
+
         MathProblemType::General
     }
 
     /// Check if problem is simple arithmetic
     fn is_simple_arithmetic(&self, problem: &str) -> bool {
         // Check for arithmetic operations
-        let has_arithmetic_ops = problem.contains("+") || problem.contains("-") || 
-                                problem.contains("*") || problem.contains("/") ||
-                                problem.contains("×") || problem.contains("÷") ||
-                                problem.contains("add") || problem.contains("subtract") ||
-                                problem.contains("multiply") || problem.contains("divide") ||
-                                problem.contains("times") || problem.contains("plus") ||
-                                problem.contains("minus");
-        
+        let has_arithmetic_ops = problem.contains("+")
+            || problem.contains("-")
+            || problem.contains("*")
+            || problem.contains("/")
+            || problem.contains("×")
+            || problem.contains("÷")
+            || problem.contains("add")
+            || problem.contains("subtract")
+            || problem.contains("multiply")
+            || problem.contains("divide")
+            || problem.contains("times")
+            || problem.contains("plus")
+            || problem.contains("minus");
+
         // Check for arithmetic keywords
-        let has_arithmetic_keywords = problem.contains("what is") || problem.contains("calculate") ||
-                                     problem.contains("compute");
-        
+        let has_arithmetic_keywords = problem.contains("what is")
+            || problem.contains("calculate")
+            || problem.contains("compute");
+
         // Check if it has numbers
         let numbers = self.extract_all_numbers_from_text(problem);
         let has_numbers = numbers.len() >= 2;
-        
+
         (has_arithmetic_ops || has_arithmetic_keywords) && has_numbers
     }
 
@@ -301,7 +328,7 @@ impl MathProblemSolver {
     pub fn solve_problem(&mut self, problem: &str) -> Result<MathSolution> {
         let problem_type = self.detect_problem_type(problem);
         let mut solution = MathSolution::new(problem.to_string(), problem_type.clone());
-        
+
         match problem_type {
             MathProblemType::Arithmetic => self.solve_arithmetic(&mut solution)?,
             MathProblemType::Algebra => self.solve_algebra(&mut solution)?,
@@ -309,14 +336,14 @@ impl MathProblemSolver {
             MathProblemType::Equation => self.solve_equation(&mut solution)?,
             MathProblemType::General => self.solve_general_math(&mut solution)?,
         }
-        
+
         Ok(solution)
     }
 
     /// Solve arithmetic problems
     fn solve_arithmetic(&self, solution: &mut MathSolution) -> Result<()> {
         let problem = solution.problem.clone();
-        
+
         // Step 1: Analyze the problem
         let step1 = MathStep::new(
             1,
@@ -324,16 +351,19 @@ impl MathProblemSolver {
             MathStepType::ProblemAnalysis,
         );
         solution.add_step(step1);
-        
+
         // Step 2: Extract numbers and operation
         let (numbers, operation) = self.extract_arithmetic_components(&problem)?;
         let step2 = MathStep::new(
             2,
-            format!("Extract numbers: {:?} and operation: {}", numbers, operation),
+            format!(
+                "Extract numbers: {:?} and operation: {}",
+                numbers, operation
+            ),
             MathStepType::VariableIdentification,
         );
         solution.add_step(step2);
-        
+
         // Step 3: Perform calculation
         let result = self.perform_arithmetic_calculation(&numbers, &operation)?;
         let step3 = MathStep::new(
@@ -341,10 +371,13 @@ impl MathProblemSolver {
             "Perform the calculation".to_string(),
             MathStepType::Calculation,
         )
-        .with_calculation(format!("{} {} {} = {}", numbers[0], operation, numbers[1], result))
+        .with_calculation(format!(
+            "{} {} {} = {}",
+            numbers[0], operation, numbers[1], result
+        ))
         .with_result(result.to_string());
         solution.add_step(step3);
-        
+
         // Step 4: Conclusion
         let step4 = MathStep::new(
             4,
@@ -352,17 +385,17 @@ impl MathProblemSolver {
             MathStepType::Conclusion,
         );
         solution.add_step(step4);
-        
+
         solution.set_final_answer(result.to_string());
         solution.set_confidence(0.9);
-        
+
         Ok(())
     }
 
     /// Solve algebraic problems
     fn solve_algebra(&self, solution: &mut MathSolution) -> Result<()> {
         let problem = solution.problem.clone();
-        
+
         // Step 1: Identify variables and constants
         let step1 = MathStep::new(
             1,
@@ -370,7 +403,7 @@ impl MathProblemSolver {
             MathStepType::VariableIdentification,
         );
         solution.add_step(step1);
-        
+
         // Step 2: Set up equation
         let equation = self.extract_equation_from_problem(&problem)?;
         let step2 = MathStep::new(
@@ -379,7 +412,7 @@ impl MathProblemSolver {
             MathStepType::EquationSetup,
         );
         solution.add_step(step2);
-        
+
         // Step 3: Solve the equation
         let result = self.solve_simple_equation(&equation)?;
         let step3 = MathStep::new(
@@ -390,7 +423,7 @@ impl MathProblemSolver {
         .with_calculation(equation.clone())
         .with_result(result.clone());
         solution.add_step(step3);
-        
+
         // Step 4: Verify the solution
         let verification = self.verify_algebraic_solution(&equation, &result)?;
         let step4 = MathStep::new(
@@ -400,17 +433,17 @@ impl MathProblemSolver {
         );
         solution.add_step(step4);
         solution.set_verification(verification);
-        
+
         solution.set_final_answer(result);
         solution.set_confidence(0.85);
-        
+
         Ok(())
     }
 
     /// Solve word problems
     fn solve_word_problem(&self, solution: &mut MathSolution) -> Result<()> {
         let problem = solution.problem.clone();
-        
+
         // Step 1: Understand the problem
         let step1 = MathStep::new(
             1,
@@ -418,7 +451,7 @@ impl MathProblemSolver {
             MathStepType::ProblemAnalysis,
         );
         solution.add_step(step1);
-        
+
         // Step 2: Identify given information
         let given_info = self.extract_word_problem_info(&problem)?;
         let step2 = MathStep::new(
@@ -427,7 +460,7 @@ impl MathProblemSolver {
             MathStepType::VariableIdentification,
         );
         solution.add_step(step2);
-        
+
         // Step 3: Set up the mathematical expression
         let expression = self.create_word_problem_expression(&problem)?;
         let step3 = MathStep::new(
@@ -436,7 +469,7 @@ impl MathProblemSolver {
             MathStepType::EquationSetup,
         );
         solution.add_step(step3);
-        
+
         // Step 4: Calculate the result
         let result = self.evaluate_word_problem_expression(&expression)?;
         let step4 = MathStep::new(
@@ -447,17 +480,17 @@ impl MathProblemSolver {
         .with_calculation(expression)
         .with_result(result.to_string());
         solution.add_step(step4);
-        
+
         solution.set_final_answer(result.to_string());
         solution.set_confidence(0.8);
-        
+
         Ok(())
     }
 
     /// Solve equation problems
     fn solve_equation(&self, solution: &mut MathSolution) -> Result<()> {
         let problem = solution.problem.clone();
-        
+
         // Step 1: Identify the equation
         let equation = self.extract_equation_from_problem(&problem)?;
         let step1 = MathStep::new(
@@ -466,7 +499,7 @@ impl MathProblemSolver {
             MathStepType::ProblemAnalysis,
         );
         solution.add_step(step1);
-        
+
         // Step 2: Isolate the variable
         let step2 = MathStep::new(
             2,
@@ -474,7 +507,7 @@ impl MathProblemSolver {
             MathStepType::Simplification,
         );
         solution.add_step(step2);
-        
+
         // Step 3: Solve for the variable
         let result = self.solve_simple_equation(&equation)?;
         let step3 = MathStep::new(
@@ -484,7 +517,7 @@ impl MathProblemSolver {
         )
         .with_result(result.clone());
         solution.add_step(step3);
-        
+
         // Step 4: Verify the solution
         let verification = self.verify_algebraic_solution(&equation, &result)?;
         let step4 = MathStep::new(
@@ -494,10 +527,10 @@ impl MathProblemSolver {
         );
         solution.add_step(step4);
         solution.set_verification(verification);
-        
+
         solution.set_final_answer(result);
         solution.set_confidence(0.9);
-        
+
         Ok(())
     }
 
@@ -509,24 +542,24 @@ impl MathProblemSolver {
             MathStepType::ProblemAnalysis,
         );
         solution.add_step(step1);
-        
+
         let step2 = MathStep::new(
             2,
             "Apply appropriate mathematical principles and methods".to_string(),
             MathStepType::Calculation,
         );
         solution.add_step(step2);
-        
+
         let step3 = MathStep::new(
             3,
             "Provide the solution based on mathematical reasoning".to_string(),
             MathStepType::Conclusion,
         );
         solution.add_step(step3);
-        
+
         solution.set_final_answer("Solution requires more specific problem details".to_string());
         solution.set_confidence(0.5);
-        
+
         Ok(())
     }
 
@@ -535,43 +568,64 @@ impl MathProblemSolver {
     /// Extract numbers and operation from arithmetic problem
     fn extract_arithmetic_components(&self, problem: &str) -> Result<(Vec<f64>, String)> {
         let lower_problem = problem.to_lowercase();
-        let mut numbers = Vec::new();
+        let mut numbers = self.extract_all_numbers_from_text(problem);
         let mut operation = String::new();
-        
+
         // Determine operation first
-        if lower_problem.contains("add") || lower_problem.contains("+") || lower_problem.contains("plus") {
+        if lower_problem.contains("add")
+            || lower_problem.contains("+")
+            || lower_problem.contains("plus")
+        {
             operation = "+".to_string();
-        } else if lower_problem.contains("subtract") || lower_problem.contains("-") || lower_problem.contains("minus") {
+        } else if lower_problem.contains("subtract")
+            || lower_problem.contains("-")
+            || lower_problem.contains("minus")
+        {
             operation = "-".to_string();
-        } else if lower_problem.contains("multiply") || lower_problem.contains("*") || lower_problem.contains("times") || lower_problem.contains("×") {
+        } else if lower_problem.contains("multiply")
+            || lower_problem.contains("*")
+            || lower_problem.contains("times")
+            || lower_problem.contains("×")
+        {
             operation = "*".to_string();
-        } else if lower_problem.contains("divide") || lower_problem.contains("/") || lower_problem.contains("÷") {
+        } else if lower_problem.contains("divide")
+            || lower_problem.contains("/")
+            || lower_problem.contains("÷")
+        {
             operation = "/".to_string();
         }
-        
-        // Extract numbers from the problem text
-        numbers = self.extract_all_numbers_from_text(problem);
-        
+
         // If we still don't have enough numbers, try number words
         if numbers.len() < 2 {
             let additional_numbers = self.extract_number_words(&lower_problem);
             numbers.extend(additional_numbers);
         }
-        
+
         // Special handling for specific problem formats
         if numbers.len() < 2 {
             numbers = self.handle_special_arithmetic_formats(problem)?;
         }
-        
+
         if numbers.len() < 2 {
-            return Err(ModelError::Forward("Could not extract sufficient numbers from problem".to_string()));
+            return Err(ModelError::Forward(
+                "Could not extract sufficient numbers from problem".to_string(),
+            ));
         }
-        
+
         // If no operation was detected, try to infer from context
         if operation.is_empty() {
             operation = self.infer_operation_from_context(&lower_problem);
         }
-        
+
+        // Handle phrasing "subtract X from Y" => interpret as Y - X
+        if operation == "-"
+            && lower_problem.contains("subtract")
+            && lower_problem.contains(" from ")
+            && numbers.len() >= 2
+        {
+            numbers.swap(0, 1);
+        }
+
         Ok((numbers, operation))
     }
 
@@ -579,16 +633,17 @@ impl MathProblemSolver {
     fn extract_all_numbers_from_text(&self, text: &str) -> Vec<f64> {
         let mut numbers = Vec::new();
         let words: Vec<&str> = text.split_whitespace().collect();
-        
+
         for word in words {
             // Clean the word of punctuation
-            let clean_word = word.trim_matches(|c: char| c.is_ascii_punctuation() && c != '.' && c != '-');
-            
+            let clean_word =
+                word.trim_matches(|c: char| c.is_ascii_punctuation() && c != '.' && c != '-');
+
             if let Ok(num) = clean_word.parse::<f64>() {
                 numbers.push(num);
             }
         }
-        
+
         numbers
     }
 
@@ -596,53 +651,77 @@ impl MathProblemSolver {
     fn extract_number_words(&self, text: &str) -> Vec<f64> {
         let mut numbers = Vec::new();
         let number_words = [
-            ("zero", 0.0), ("one", 1.0), ("two", 2.0), ("three", 3.0), ("four", 4.0), ("five", 5.0),
-            ("six", 6.0), ("seven", 7.0), ("eight", 8.0), ("nine", 9.0), ("ten", 10.0),
-            ("eleven", 11.0), ("twelve", 12.0), ("thirteen", 13.0), ("fourteen", 14.0), ("fifteen", 15.0),
-            ("sixteen", 16.0), ("seventeen", 17.0), ("eighteen", 18.0), ("nineteen", 19.0), ("twenty", 20.0),
-            ("thirty", 30.0), ("forty", 40.0), ("fifty", 50.0), ("sixty", 60.0), ("seventy", 70.0),
-            ("eighty", 80.0), ("ninety", 90.0), ("hundred", 100.0),
+            ("zero", 0.0),
+            ("one", 1.0),
+            ("two", 2.0),
+            ("three", 3.0),
+            ("four", 4.0),
+            ("five", 5.0),
+            ("six", 6.0),
+            ("seven", 7.0),
+            ("eight", 8.0),
+            ("nine", 9.0),
+            ("ten", 10.0),
+            ("eleven", 11.0),
+            ("twelve", 12.0),
+            ("thirteen", 13.0),
+            ("fourteen", 14.0),
+            ("fifteen", 15.0),
+            ("sixteen", 16.0),
+            ("seventeen", 17.0),
+            ("eighteen", 18.0),
+            ("nineteen", 19.0),
+            ("twenty", 20.0),
+            ("thirty", 30.0),
+            ("forty", 40.0),
+            ("fifty", 50.0),
+            ("sixty", 60.0),
+            ("seventy", 70.0),
+            ("eighty", 80.0),
+            ("ninety", 90.0),
+            ("hundred", 100.0),
         ];
-        
+
         for (word, value) in &number_words {
             if text.contains(word) {
                 numbers.push(*value);
             }
         }
-        
+
         numbers
     }
 
     /// Handle special arithmetic formats
     fn handle_special_arithmetic_formats(&self, problem: &str) -> Result<Vec<f64>> {
         let mut numbers = Vec::new();
-        
+
         // Handle formats like "What is 15 + 27?"
         if let Some(pos) = problem.find("is ") {
             let after_is = &problem[pos + 3..];
             numbers = self.extract_all_numbers_from_text(after_is);
         }
-        
+
         // Handle formats like "Calculate 84 - 39"
         if let Some(pos) = problem.find("Calculate ") {
             let after_calc = &problem[pos + 10..];
             numbers = self.extract_all_numbers_from_text(after_calc);
         }
-        
+
         // Handle formats like "Divide 144 by 12"
         if problem.to_lowercase().contains("divide") && problem.to_lowercase().contains("by") {
             let parts: Vec<&str> = problem.split_whitespace().collect();
             for (i, word) in parts.iter().enumerate() {
                 if let Ok(num) = word.parse::<f64>() {
                     numbers.push(num);
-                } else if word.to_lowercase() == "by" && i + 1 < parts.len() {
-                    if let Ok(num) = parts[i + 1].parse::<f64>() {
-                        numbers.push(num);
-                    }
+                } else if word.to_lowercase() == "by"
+                    && i + 1 < parts.len()
+                    && let Ok(num) = parts[i + 1].parse::<f64>()
+                {
+                    numbers.push(num);
                 }
             }
         }
-        
+
         Ok(numbers)
     }
 
@@ -664,9 +743,11 @@ impl MathProblemSolver {
     /// Perform arithmetic calculation
     fn perform_arithmetic_calculation(&self, numbers: &[f64], operation: &str) -> Result<f64> {
         if numbers.len() < 2 {
-            return Err(ModelError::Forward("Need at least two numbers for calculation".to_string()));
+            return Err(ModelError::Forward(
+                "Need at least two numbers for calculation".to_string(),
+            ));
         }
-        
+
         let result = match operation {
             "+" => numbers[0] + numbers[1],
             "-" => numbers[0] - numbers[1],
@@ -677,16 +758,21 @@ impl MathProblemSolver {
                 }
                 numbers[0] / numbers[1]
             }
-            _ => return Err(ModelError::Forward(format!("Unknown operation: {}", operation))),
+            _ => {
+                return Err(ModelError::Forward(format!(
+                    "Unknown operation: {}",
+                    operation
+                )));
+            }
         };
-        
+
         Ok(result)
     }
 
     /// Extract equation from problem text
     fn extract_equation_from_problem(&self, problem: &str) -> Result<String> {
         let lower_problem = problem.to_lowercase();
-        
+
         // Look for specific equation patterns first (most reliable)
         if lower_problem.contains("2x + 5 = 13") || lower_problem.contains("2x+5=13") {
             return Ok("2x + 5 = 13".to_string());
@@ -703,20 +789,20 @@ impl MathProblemSolver {
         if lower_problem.contains("4x - 8 = 12") || lower_problem.contains("4x-8=12") {
             return Ok("4x - 8 = 12".to_string());
         }
-        
+
         // Look for explicit equations with equals sign
         if let Some(eq_pos) = problem.find('=') {
             // Extract a reasonable window around the equals sign
-            let start = if eq_pos >= 10 { eq_pos - 10 } else { 0 };
-            let end = if eq_pos + 10 < problem.len() { eq_pos + 10 } else { problem.len() };
-            
+            let start = eq_pos.saturating_sub(10);
+            let end = (eq_pos + 10).min(problem.len());
+
             let window = &problem[start..end];
-            
+
             // Look for equation patterns in the window
             let words: Vec<&str> = window.split_whitespace().collect();
             let mut equation_parts = Vec::new();
             let mut found_equals = false;
-            
+
             for word in words {
                 if word.contains('=') {
                     found_equals = true;
@@ -735,22 +821,25 @@ impl MathProblemSolver {
                             }
                         }
                     }
-                } else if word.chars().any(|c| c.is_alphanumeric() || "+-*/()".contains(c)) {
+                } else if word
+                    .chars()
+                    .any(|c| c.is_alphanumeric() || "+-*/()".contains(c))
+                {
                     equation_parts.push(word);
                 }
-                
+
                 // Stop if we have a complete equation
                 if found_equals && equation_parts.len() >= 3 {
                     break;
                 }
             }
-            
+
             if equation_parts.len() >= 3 {
                 let equation = equation_parts.join(" ");
                 return Ok(equation);
             }
         }
-        
+
         // Try to construct equation from description with specific patterns
         if lower_problem.contains("find the value of x when") {
             // Extract the part after "when"
@@ -759,7 +848,7 @@ impl MathProblemSolver {
                 return Ok(after_when.trim().to_string());
             }
         }
-        
+
         if lower_problem.contains("solve for x:") {
             // Extract the part after the colon
             if let Some(colon_pos) = problem.find(':') {
@@ -767,7 +856,7 @@ impl MathProblemSolver {
                 return Ok(after_colon.trim().to_string());
             }
         }
-        
+
         if lower_problem.contains("solve:") {
             // Extract the part after "solve:"
             if let Some(solve_pos) = lower_problem.find("solve:") {
@@ -775,22 +864,25 @@ impl MathProblemSolver {
                 return Ok(after_solve.trim().to_string());
             }
         }
-        
+
         // Try to construct equation from numbers found
-        if lower_problem.contains("solve for x") || lower_problem.contains("find x") || lower_problem.contains("find the value") {
+        if lower_problem.contains("solve for x")
+            || lower_problem.contains("find x")
+            || lower_problem.contains("find the value")
+        {
             let numbers = self.extract_all_numbers_from_text(problem);
             if numbers.len() >= 2 {
                 return Ok(format!("x + {} = {}", numbers[0], numbers[1]));
             }
         }
-        
+
         Ok("x = ?".to_string()) // Default placeholder
     }
 
     /// Solve simple linear equations
     fn solve_simple_equation(&self, equation: &str) -> Result<String> {
         let eq = equation.to_lowercase().replace(" ", "");
-        
+
         // Handle specific known equations
         if eq == "2x+5=13" {
             return Ok("x = 4".to_string());
@@ -807,68 +899,69 @@ impl MathProblemSolver {
         if eq == "4x-8=12" {
             return Ok("x = 5".to_string());
         }
-        
+
         // Try to parse and solve general linear equations
         if let Some(eq_pos) = eq.find('=') {
             let left = &eq[..eq_pos];
             let right = &eq[eq_pos + 1..];
-            
+
             if let Ok(right_val) = right.parse::<f64>() {
                 // Handle x + constant = value
-                if left.starts_with("x+") {
-                    if let Ok(constant) = left[2..].parse::<f64>() {
+                if let Some(rest) = left.strip_prefix("x+") {
+                    if let Ok(constant) = rest.parse::<f64>() {
                         let x_value = right_val - constant;
                         return Ok(format!("x = {}", x_value));
                     }
                 }
                 // Handle x - constant = value
-                else if left.starts_with("x-") {
-                    if let Ok(constant) = left[2..].parse::<f64>() {
+                else if let Some(rest) = left.strip_prefix("x-") {
+                    if let Ok(constant) = rest.parse::<f64>() {
                         let x_value = right_val + constant;
                         return Ok(format!("x = {}", x_value));
                     }
                 }
                 // Handle coefficient*x = value
-                else if left.ends_with("x") && left.len() > 1 {
-                    let coeff_str = &left[..left.len()-1];
-                    if let Ok(coefficient) = coeff_str.parse::<f64>() {
-                        if coefficient != 0.0 {
-                            let x_value = right_val / coefficient;
-                            return Ok(format!("x = {}", x_value));
-                        }
+                else if let Some(coeff_str) = left.strip_suffix('x') {
+                    if let Ok(coefficient) = coeff_str.parse::<f64>()
+                        && coefficient != 0.0
+                    {
+                        let x_value = right_val / coefficient;
+                        return Ok(format!("x = {}", x_value));
                     }
                 }
                 // Handle coefficient*x + constant = value
                 else if left.contains("x+") {
                     if let Some(x_pos) = left.find("x+") {
                         let coeff_str = &left[..x_pos];
-                        let const_str = &left[x_pos+2..];
-                        
-                        if let (Ok(coefficient), Ok(constant)) = (coeff_str.parse::<f64>(), const_str.parse::<f64>()) {
-                            if coefficient != 0.0 {
-                                let x_value = (right_val - constant) / coefficient;
-                                return Ok(format!("x = {}", x_value));
-                            }
+                        let const_str = &left[x_pos + 2..];
+
+                        if let (Ok(coefficient), Ok(constant)) =
+                            (coeff_str.parse::<f64>(), const_str.parse::<f64>())
+                            && coefficient != 0.0
+                        {
+                            let x_value = (right_val - constant) / coefficient;
+                            return Ok(format!("x = {}", x_value));
                         }
                     }
                 }
                 // Handle coefficient*x - constant = value
-                else if left.contains("x-") {
-                    if let Some(x_pos) = left.find("x-") {
-                        let coeff_str = &left[..x_pos];
-                        let const_str = &left[x_pos+2..];
-                        
-                        if let (Ok(coefficient), Ok(constant)) = (coeff_str.parse::<f64>(), const_str.parse::<f64>()) {
-                            if coefficient != 0.0 {
-                                let x_value = (right_val + constant) / coefficient;
-                                return Ok(format!("x = {}", x_value));
-                            }
-                        }
+                else if left.contains("x-")
+                    && let Some(x_pos) = left.find("x-")
+                {
+                    let coeff_str = &left[..x_pos];
+                    let const_str = &left[x_pos + 2..];
+
+                    if let (Ok(coefficient), Ok(constant)) =
+                        (coeff_str.parse::<f64>(), const_str.parse::<f64>())
+                        && coefficient != 0.0
+                    {
+                        let x_value = (right_val + constant) / coefficient;
+                        return Ok(format!("x = {}", x_value));
                     }
                 }
             }
         }
-        
+
         Ok("x = [solution]".to_string()) // Placeholder for complex equations
     }
 
@@ -886,14 +979,14 @@ impl MathProblemSolver {
                 return Ok(verification);
             }
         }
-        
+
         Ok("Solution verified".to_string())
     }
 
     /// Extract information from word problems
     fn extract_word_problem_info(&self, problem: &str) -> Result<String> {
         let mut info = Vec::new();
-        
+
         // Look for numbers in the problem
         let words: Vec<&str> = problem.split_whitespace().collect();
         for word in words {
@@ -901,7 +994,7 @@ impl MathProblemSolver {
                 info.push(format!("Number: {}", word));
             }
         }
-        
+
         // Look for key terms
         let lower_problem = problem.to_lowercase();
         if lower_problem.contains("total") {
@@ -910,7 +1003,7 @@ impl MathProblemSolver {
         if lower_problem.contains("each") {
             info.push("Distribution: per item".to_string());
         }
-        
+
         Ok(info.join(", "))
     }
 
@@ -918,36 +1011,48 @@ impl MathProblemSolver {
     fn create_word_problem_expression(&self, problem: &str) -> Result<String> {
         let lower_problem = problem.to_lowercase();
         let numbers = self.extract_all_numbers_from_text(problem);
-        
+
         // Determine operation based on context and create expression with actual numbers
-        if lower_problem.contains("total") || lower_problem.contains("altogether") || lower_problem.contains("sum") {
+        if lower_problem.contains("total")
+            || lower_problem.contains("altogether")
+            || lower_problem.contains("sum")
+        {
             if numbers.len() >= 2 {
                 return Ok(format!("{} + {}", numbers[0], numbers[1]));
             }
             return Ok("a + b".to_string());
         }
-        
-        if lower_problem.contains("difference") || lower_problem.contains("less") || lower_problem.contains("fewer") {
+
+        if lower_problem.contains("difference")
+            || lower_problem.contains("less")
+            || lower_problem.contains("fewer")
+        {
             if numbers.len() >= 2 {
                 return Ok(format!("{} - {}", numbers[0], numbers[1]));
             }
             return Ok("a - b".to_string());
         }
-        
-        if lower_problem.contains("each") || lower_problem.contains("times") || lower_problem.contains("multiply") {
+
+        if lower_problem.contains("each")
+            || lower_problem.contains("times")
+            || lower_problem.contains("multiply")
+        {
             if numbers.len() >= 2 {
                 return Ok(format!("{} × {}", numbers[0], numbers[1]));
             }
             return Ok("a × b".to_string());
         }
-        
-        if lower_problem.contains("divide") || lower_problem.contains("per") || lower_problem.contains("average") {
+
+        if lower_problem.contains("divide")
+            || lower_problem.contains("per")
+            || lower_problem.contains("average")
+        {
             if numbers.len() >= 2 {
                 return Ok(format!("{} ÷ {}", numbers[0], numbers[1]));
             }
             return Ok("a ÷ b".to_string());
         }
-        
+
         // Special handling for specific word problem patterns
         if lower_problem.contains("each book costs") || lower_problem.contains("per") {
             // Multiplication problem: quantity × price
@@ -955,19 +1060,19 @@ impl MathProblemSolver {
                 return Ok(format!("{} × {}", numbers[0], numbers[1]));
             }
         }
-        
+
         if lower_problem.contains("how many are") || lower_problem.contains("remaining") {
             // Subtraction problem: total - part
             if numbers.len() >= 2 {
                 return Ok(format!("{} - {}", numbers[0], numbers[1]));
             }
         }
-        
+
         // Default to addition for most word problems
         if numbers.len() >= 2 {
             return Ok(format!("{} + {}", numbers[0], numbers[1]));
         }
-        
+
         Ok("mathematical expression".to_string())
     }
 
@@ -976,42 +1081,53 @@ impl MathProblemSolver {
         // Try to evaluate actual mathematical expressions
         if expression.contains('+') {
             let parts: Vec<&str> = expression.split('+').collect();
-            if parts.len() == 2 {
-                if let (Ok(a), Ok(b)) = (parts[0].trim().parse::<f64>(), parts[1].trim().parse::<f64>()) {
-                    return Ok(a + b);
-                }
+            if parts.len() == 2
+                && let (Ok(a), Ok(b)) = (
+                    parts[0].trim().parse::<f64>(),
+                    parts[1].trim().parse::<f64>(),
+                )
+            {
+                return Ok(a + b);
             }
         }
-        
+
         if expression.contains('-') {
             let parts: Vec<&str> = expression.split('-').collect();
-            if parts.len() == 2 {
-                if let (Ok(a), Ok(b)) = (parts[0].trim().parse::<f64>(), parts[1].trim().parse::<f64>()) {
-                    return Ok(a - b);
-                }
+            if parts.len() == 2
+                && let (Ok(a), Ok(b)) = (
+                    parts[0].trim().parse::<f64>(),
+                    parts[1].trim().parse::<f64>(),
+                )
+            {
+                return Ok(a - b);
             }
         }
-        
+
         if expression.contains('×') {
             let parts: Vec<&str> = expression.split('×').collect();
-            if parts.len() == 2 {
-                if let (Ok(a), Ok(b)) = (parts[0].trim().parse::<f64>(), parts[1].trim().parse::<f64>()) {
-                    return Ok(a * b);
-                }
+            if parts.len() == 2
+                && let (Ok(a), Ok(b)) = (
+                    parts[0].trim().parse::<f64>(),
+                    parts[1].trim().parse::<f64>(),
+                )
+            {
+                return Ok(a * b);
             }
         }
-        
+
         if expression.contains('÷') {
             let parts: Vec<&str> = expression.split('÷').collect();
-            if parts.len() == 2 {
-                if let (Ok(a), Ok(b)) = (parts[0].trim().parse::<f64>(), parts[1].trim().parse::<f64>()) {
-                    if b != 0.0 {
-                        return Ok(a / b);
-                    }
-                }
+            if parts.len() == 2
+                && let (Ok(a), Ok(b)) = (
+                    parts[0].trim().parse::<f64>(),
+                    parts[1].trim().parse::<f64>(),
+                )
+                && b != 0.0
+            {
+                return Ok(a / b);
             }
         }
-        
+
         // Fallback for placeholder expressions
         match expression {
             "a + b" => Ok(10.0), // Placeholder result
@@ -1025,7 +1141,7 @@ impl MathProblemSolver {
     /// Extract numerical answer from text with proper mathematical formatting
     pub fn extract_numerical_answer(&self, text: &str) -> Option<String> {
         let lower_text = text.to_lowercase();
-        
+
         // Look for common answer patterns
         let patterns = [
             "answer is ",
@@ -1055,7 +1171,7 @@ impl MathProblemSolver {
         let mut number_str = String::new();
         let mut found_digit = false;
         let mut decimal_used = false;
-        
+
         for ch in text.trim().chars() {
             if ch.is_ascii_digit() {
                 number_str.push(ch);
@@ -1065,13 +1181,11 @@ impl MathProblemSolver {
                 decimal_used = true;
             } else if ch == '-' && !found_digit && number_str.is_empty() {
                 number_str.push(ch);
-            } else if found_digit {
-                break;
-            } else if !ch.is_whitespace() {
+            } else if found_digit || !ch.is_whitespace() {
                 break;
             }
         }
-        
+
         if found_digit && !number_str.is_empty() && number_str != "-" {
             Some(number_str)
         } else {
@@ -1083,17 +1197,17 @@ impl MathProblemSolver {
     fn extract_last_number(&self, text: &str) -> Option<String> {
         let mut last_number = None;
         let words: Vec<&str> = text.split_whitespace().collect();
-        
+
         for word in words.iter().rev() {
             // Remove common punctuation
             let clean_word = word.trim_matches(|c: char| c.is_ascii_punctuation());
-            
-            if let Ok(_) = clean_word.parse::<f64>() {
+
+            if clean_word.parse::<f64>().is_ok() {
                 last_number = Some(clean_word.to_string());
                 break;
             }
         }
-        
+
         last_number
     }
 
@@ -1113,7 +1227,7 @@ impl MathProblemSolver {
     /// Validate mathematical answer format
     pub fn validate_answer_format(&self, answer: &str) -> bool {
         let trimmed = answer.trim();
-        
+
         // Check if empty
         if trimmed.is_empty() {
             return false;
@@ -1125,8 +1239,7 @@ impl MathProblemSolver {
         }
 
         // Check for algebraic solutions like "x = 4"
-        if trimmed.starts_with("x = ") {
-            let number_part = &trimmed[4..];
+        if let Some(number_part) = trimmed.strip_prefix("x = ") {
             return number_part.parse::<f64>().is_ok();
         }
 
@@ -1139,8 +1252,7 @@ impl MathProblemSolver {
         }
 
         // Check for percentages like "25%"
-        if trimmed.ends_with('%') {
-            let number_part = &trimmed[..trimmed.len() - 1];
+        if let Some(number_part) = trimmed.strip_suffix('%') {
             return number_part.parse::<f64>().is_ok();
         }
 
@@ -1165,7 +1277,7 @@ mod tests {
         let step = MathStep::new(1, "First step".to_string(), MathStepType::ProblemAnalysis)
             .with_calculation("2 + 2".to_string())
             .with_result("4".to_string());
-        
+
         assert_eq!(step.step_number, 1);
         assert_eq!(step.description, "First step");
         assert_eq!(step.calculation, Some("2 + 2".to_string()));
@@ -1176,22 +1288,38 @@ mod tests {
     #[test]
     fn test_problem_type_detection() {
         let solver = MathProblemSolver::new(100, 101);
-        
-        assert_eq!(solver.detect_problem_type("What is 2 + 2?"), MathProblemType::Arithmetic);
-        assert_eq!(solver.detect_problem_type("Solve for x: 2x + 5 = 13"), MathProblemType::Equation);
-        assert_eq!(solver.detect_problem_type("John bought 5 apples"), MathProblemType::WordProblem);
-        assert_eq!(solver.detect_problem_type("Find the value of x"), MathProblemType::Algebra);
+
+        assert_eq!(
+            solver.detect_problem_type("What is 2 + 2?"),
+            MathProblemType::Arithmetic
+        );
+        assert_eq!(
+            solver.detect_problem_type("Solve for x: 2x + 5 = 13"),
+            MathProblemType::Equation
+        );
+        assert_eq!(
+            solver.detect_problem_type("John bought 5 apples"),
+            MathProblemType::WordProblem
+        );
+        assert_eq!(
+            solver.detect_problem_type("Find the value of x"),
+            MathProblemType::Algebra
+        );
     }
 
     #[test]
     fn test_arithmetic_component_extraction() {
         let solver = MathProblemSolver::new(100, 101);
-        
-        let (numbers, operation) = solver.extract_arithmetic_components("What is 5 + 3?").unwrap();
+
+        let (numbers, operation) = solver
+            .extract_arithmetic_components("What is 5 + 3?")
+            .unwrap();
         assert_eq!(numbers, vec![5.0, 3.0]);
         assert_eq!(operation, "+");
-        
-        let (numbers, operation) = solver.extract_arithmetic_components("Subtract 2 from 7").unwrap();
+
+        let (numbers, operation) = solver
+            .extract_arithmetic_components("Subtract 2 from 7")
+            .unwrap();
         assert_eq!(numbers, vec![7.0, 2.0]);
         assert_eq!(operation, "-");
     }
@@ -1199,37 +1327,74 @@ mod tests {
     #[test]
     fn test_arithmetic_calculation() {
         let solver = MathProblemSolver::new(100, 101);
-        
-        assert_eq!(solver.perform_arithmetic_calculation(&[5.0, 3.0], "+").unwrap(), 8.0);
-        assert_eq!(solver.perform_arithmetic_calculation(&[7.0, 2.0], "-").unwrap(), 5.0);
-        assert_eq!(solver.perform_arithmetic_calculation(&[4.0, 3.0], "*").unwrap(), 12.0);
-        assert_eq!(solver.perform_arithmetic_calculation(&[8.0, 2.0], "/").unwrap(), 4.0);
+
+        assert_eq!(
+            solver
+                .perform_arithmetic_calculation(&[5.0, 3.0], "+")
+                .unwrap(),
+            8.0
+        );
+        assert_eq!(
+            solver
+                .perform_arithmetic_calculation(&[7.0, 2.0], "-")
+                .unwrap(),
+            5.0
+        );
+        assert_eq!(
+            solver
+                .perform_arithmetic_calculation(&[4.0, 3.0], "*")
+                .unwrap(),
+            12.0
+        );
+        assert_eq!(
+            solver
+                .perform_arithmetic_calculation(&[8.0, 2.0], "/")
+                .unwrap(),
+            4.0
+        );
     }
 
     #[test]
     fn test_equation_extraction() {
         let solver = MathProblemSolver::new(100, 101);
-        
-        assert_eq!(solver.extract_equation_from_problem("Solve: x + 3 = 7").unwrap(), "x + 3 = 7");
-        assert_eq!(solver.extract_equation_from_problem("Find x when 2x + 5 = 13").unwrap(), "2x + 5 = 13");
+
+        assert_eq!(
+            solver
+                .extract_equation_from_problem("Solve: x + 3 = 7")
+                .unwrap(),
+            "x + 3 = 7"
+        );
+        assert_eq!(
+            solver
+                .extract_equation_from_problem("Find x when 2x + 5 = 13")
+                .unwrap(),
+            "2x + 5 = 13"
+        );
     }
 
     #[test]
     fn test_simple_equation_solving() {
         let solver = MathProblemSolver::new(100, 101);
-        
+
         assert_eq!(solver.solve_simple_equation("x + 3 = 7").unwrap(), "x = 4");
-        assert_eq!(solver.solve_simple_equation("2x + 5 = 13").unwrap(), "x = 4");
+        assert_eq!(
+            solver.solve_simple_equation("2x + 5 = 13").unwrap(),
+            "x = 4"
+        );
         assert_eq!(solver.solve_simple_equation("3x = 15").unwrap(), "x = 5");
     }
 
     #[test]
     fn test_solution_formatting() {
         let mut solution = MathSolution::new("2 + 2".to_string(), MathProblemType::Arithmetic);
-        solution.add_step(MathStep::new(1, "Add the numbers".to_string(), MathStepType::Calculation));
+        solution.add_step(MathStep::new(
+            1,
+            "Add the numbers".to_string(),
+            MathStepType::Calculation,
+        ));
         solution.set_final_answer("4".to_string());
         solution.set_confidence(0.9);
-        
+
         let formatted = solution.format_solution();
         assert!(formatted.contains("Problem: 2 + 2"));
         assert!(formatted.contains("Final Answer: 4"));
@@ -1242,11 +1407,11 @@ mod tests {
         solution.add_step(
             MathStep::new(1, "Add the numbers".to_string(), MathStepType::Calculation)
                 .with_calculation("2 + 2".to_string())
-                .with_result("4".to_string())
+                .with_result("4".to_string()),
         );
         solution.set_final_answer("4".to_string());
         solution.set_confidence(0.9);
-        
+
         let reasoning_output = solution.to_reasoning_output();
         assert_eq!(reasoning_output.final_answer, "4");
         assert_eq!(reasoning_output.confidence, 0.9);

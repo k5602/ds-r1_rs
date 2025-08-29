@@ -2,7 +2,9 @@
 //!
 //! Comprehensive test problem sets for evaluating reasoning capabilities.
 
-use crate::utils::evaluation::{ReasoningBenchmark, ReasoningProblem, ProblemCategory, DifficultyLevel};
+use crate::utils::evaluation::{
+    DifficultyLevel, ProblemCategory, ReasoningBenchmark, ReasoningProblem,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -50,7 +52,10 @@ impl TestDatasetCollection {
     }
 
     /// Get problems by difficulty across all datasets
-    pub fn get_problems_by_difficulty(&self, difficulty: &DifficultyLevel) -> Vec<&ReasoningProblem> {
+    pub fn get_problems_by_difficulty(
+        &self,
+        difficulty: &DifficultyLevel,
+    ) -> Vec<&ReasoningProblem> {
         self.datasets
             .values()
             .flat_map(|d| &d.problems)
@@ -61,7 +66,7 @@ impl TestDatasetCollection {
     /// Create a comprehensive collection with all standard datasets
     pub fn create_comprehensive() -> Self {
         let mut collection = Self::new();
-        
+
         // Add all standard benchmarks
         collection.add_dataset(create_extended_math_dataset());
         collection.add_dataset(create_extended_logic_dataset());
@@ -69,7 +74,7 @@ impl TestDatasetCollection {
         collection.add_dataset(create_code_explanation_dataset());
         collection.add_dataset(create_word_problems_dataset());
         collection.add_dataset(create_multi_step_reasoning_dataset());
-        
+
         collection
     }
 
@@ -111,7 +116,7 @@ pub fn create_extended_math_dataset() -> ReasoningBenchmark {
                 category: ProblemCategory::Mathematics,
                 difficulty: DifficultyLevel::Easy,
             },
-            
+
             // Geometry
             ReasoningProblem {
                 id: "ext_math_004".to_string(),
@@ -127,7 +132,7 @@ pub fn create_extended_math_dataset() -> ReasoningBenchmark {
                 category: ProblemCategory::Mathematics,
                 difficulty: DifficultyLevel::Medium,
             },
-            
+
             // Advanced Problems
             ReasoningProblem {
                 id: "ext_math_006".to_string(),
@@ -167,7 +172,7 @@ pub fn create_extended_logic_dataset() -> ReasoningBenchmark {
                 category: ProblemCategory::Logic,
                 difficulty: DifficultyLevel::Medium,
             },
-            
+
             // Puzzle Logic
             ReasoningProblem {
                 id: "ext_logic_003".to_string(),
@@ -207,7 +212,7 @@ pub fn create_extended_programming_dataset() -> ReasoningBenchmark {
                 category: ProblemCategory::Programming,
                 difficulty: DifficultyLevel::Easy,
             },
-            
+
             // Data Structure Analysis
             ReasoningProblem {
                 id: "ext_prog_003".to_string(),
@@ -223,7 +228,7 @@ pub fn create_extended_programming_dataset() -> ReasoningBenchmark {
                 category: ProblemCategory::Programming,
                 difficulty: DifficultyLevel::Medium,
             },
-            
+
             // Algorithm Design
             ReasoningProblem {
                 id: "ext_prog_005".to_string(),
@@ -355,7 +360,7 @@ mod tests {
         let collection = TestDatasetCollection::create_comprehensive();
         assert!(collection.datasets.len() > 0);
         assert!(collection.total_problems() > 0);
-        
+
         let names = collection.get_dataset_names();
         assert!(names.contains(&"Extended Mathematical Reasoning".to_string()));
         assert!(names.contains(&"Extended Logical Reasoning".to_string()));
@@ -367,7 +372,7 @@ mod tests {
         let math_problems = collection.get_problems_by_category(&ProblemCategory::Mathematics);
         let logic_problems = collection.get_problems_by_category(&ProblemCategory::Logic);
         let prog_problems = collection.get_problems_by_category(&ProblemCategory::Programming);
-        
+
         assert!(!math_problems.is_empty());
         assert!(!logic_problems.is_empty());
         assert!(!prog_problems.is_empty());
@@ -379,7 +384,7 @@ mod tests {
         let easy_problems = collection.get_problems_by_difficulty(&DifficultyLevel::Easy);
         let medium_problems = collection.get_problems_by_difficulty(&DifficultyLevel::Medium);
         let hard_problems = collection.get_problems_by_difficulty(&DifficultyLevel::Hard);
-        
+
         assert!(!easy_problems.is_empty());
         assert!(!medium_problems.is_empty());
         assert!(!hard_problems.is_empty());
@@ -390,7 +395,7 @@ mod tests {
         let collection = TestDatasetCollection::create_comprehensive();
         let json = collection.export_to_json().unwrap();
         assert!(!json.is_empty());
-        
+
         let deserialized = TestDatasetCollection::import_from_json(&json).unwrap();
         assert_eq!(collection.datasets.len(), deserialized.datasets.len());
     }
@@ -400,11 +405,11 @@ mod tests {
         let math_dataset = create_extended_math_dataset();
         assert_eq!(math_dataset.name, "Extended Mathematical Reasoning");
         assert!(!math_dataset.problems.is_empty());
-        
+
         let logic_dataset = create_extended_logic_dataset();
         assert_eq!(logic_dataset.name, "Extended Logical Reasoning");
         assert!(!logic_dataset.problems.is_empty());
-        
+
         let prog_dataset = create_extended_programming_dataset();
         assert_eq!(prog_dataset.name, "Extended Programming Reasoning");
         assert!(!prog_dataset.problems.is_empty());

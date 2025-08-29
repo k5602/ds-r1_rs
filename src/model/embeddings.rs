@@ -135,7 +135,6 @@ pub struct RotaryEmbedding {
     sin_cache: Vec<Vec<f32>>,
     head_dim: usize,
     max_seq_len: usize,
-    theta: f32,
 }
 
 impl RotaryEmbedding {
@@ -184,7 +183,6 @@ impl RotaryEmbedding {
             sin_cache,
             head_dim,
             max_seq_len,
-            theta,
         })
     }
 
@@ -295,7 +293,6 @@ mod tests {
         let input_ids = vec![0];
 
         let embeddings = embedding.forward(&input_ids).unwrap();
-        let scale = (64.0_f32).sqrt();
 
         // Check that embeddings are scaled (this is a rough check)
         let sum_of_squares: f32 = embeddings[0].iter().map(|x| x * x).sum();
@@ -326,6 +323,7 @@ mod tests {
                 }
             }
         }
+        assert!(has_zeros || has_scaled);
     }
 
     #[test]

@@ -1,5 +1,11 @@
 # 🧠 DeepSeek R1 (Rust) — Research-Grade Reasoning Model Prototype
 
+[![Crates.io](https://img.shields.io/crates/v/ds-r1-rs.svg)](https://crates.io/crates/ds-r1-rs)
+[![docs.rs](https://docs.rs/ds-r1-rs/badge.svg)](https://docs.rs/ds-r1-rs)
+[![CI](https://github.com/k5602/ds-r1-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/ds-r1-rs/actions/workflows/ci.yml)
+[![Docs](https://github.com/k5602/ds-r1-rs/actions/workflows/docs.yml/badge.svg)](https://github.com/your-org/ds-r1-rs/actions/workflows/docs.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
 A Rust implementation of a DeepSeek R1–inspired reasoning model focused on clarity, testability, and strong engineering practices. This project is designed to be an impressive portfolio piece: it includes a modular transformer architecture, reasoning-aware inference, evaluation harness, examples, comprehensive tests, and CI.
 
 Highlights:
@@ -46,6 +52,24 @@ cargo run -- generate "Explain Rust ownership in simple terms"
 
 # Evaluate reasoning benchmarks (math, logic, programming, general)
 cargo run -- eval
+
+# Export evaluation results as JSON (for dashboards)
+cargo run -- eval --json > results.json
+
+# Save current model weights (full)
+cargo run -- save-weights ckpt.json
+
+# Save only lm_head parameters; exclude embeddings
+cargo run -- save-weights ckpt.json --include lm_head --exclude embeddings
+
+# Save a small demo-size checkpoint (size-conscious)
+cargo run -- save-weights ckpt-small.json --demo-small
+
+# Load weights and generate deterministically (temperature=0)
+cargo run -- load-weights ckpt.json "Explain Rust ownership"
+
+# Load only lm_head from checkpoint, allowing missing others
+cargo run -- load-weights ckpt.json --allow-missing --include lm_head "Explain Rust ownership"
 ```
 
 Run examples:
@@ -60,10 +84,98 @@ cargo run --example training_demo
 Tests + checks:
 
 ```bash
+# Unit + doc tests
 cargo test
+
+# Integration tests (CLI)
+cargo test --test cli_integration
+# Optional heavier integration tests
+cargo test --test cli_integration -- --ignored
+
+# Lints/format
 cargo clippy --all-targets -- -D warnings
 cargo fmt --all -- --check
+
+# Benchmarks (Criterion)
+cargo bench --bench decoding -- --warm-up-time 0.5 --measurement-time 10
 ```
+
+## 🧰 Devcontainer
+
+A ready-to-use devcontainer is provided at `.devcontainer/devcontainer.json` for reproducible development with VS Code or compatible editors.
+
+Requirements:
+
+- Docker (or a compatible container runtime)
+- VS Code with the “Dev Containers” extension (or an equivalent)
+
+Usage:
+
+1. Open the project folder in VS Code.
+2. When prompted, choose “Reopen in Container” (or use the Command Palette: “Dev Containers: Reopen in Container”).
+3. The container installs Rust stable, rustfmt, clippy, llvm-tools, and utilities like cargo-tarpaulin and cargo-criterion.
+
+Common commands inside the devcontainer:
+
+```bash
+# Run unit + integration tests
+cargo test
+cargo test --test cli_integration
+cargo test --test cli_integration -- --ignored
+
+# Lints/format
+cargo clippy --all-targets -- -D warnings
+cargo fmt --all -- --check
+
+# Benchmarks (Criterion)
+cargo bench --bench decoding -- --warm-up-time 0.5 --measurement-time 10
+```
+
+Notes:
+
+- Cargo registries are cached via container volumes for faster builds.
+- The environment enables colored output and backtraces by default.
+
+## 🐳 Docker Usage
+
+A minimal Dockerfile is included for reproducible builds and tests.
+
+Build the image:
+
+```bash
+docker build -t ds-r1-rs:latest .
+```
+
+Run the CLI:
+
+```bash
+# Print version
+docker run --rm ds-r1-rs:latest version
+
+# Show default config
+docker run --rm ds-r1-rs:latest config
+
+# Generate text
+docker run --rm ds-r1-rs:latest generate "Explain Rust ownership"
+```
+
+Mount the project and run from source (optional):
+
+```bash
+# Evaluate and export JSON results using the container runtime
+docker run --rm -v "$PWD":/work -w /work ds-r1-rs:latest ds-r1-rs eval --json
+```
+
+Run tests inside the container:
+
+```bash
+# Use the built toolchain to run tests against your mounted workspace
+docker run --rm -v "$PWD":/work -w /work ds-r1-rs:latest bash -lc "cargo test --all --release --locked"
+```
+
+Tip:
+
+- For faster local iteration, you can keep the container warm and re-run commands without rebuilding the image unless dependencies change.
 
 ## 🏗️ Project Structure
 
@@ -168,6 +280,31 @@ CLI usage (quick):
 cargo run -- config
 cargo run -- generate "List 3 benefits of static typing"
 cargo run -- eval
+cargo run -- eval --json > results.json
+cargo run -- save-weights ckpt.json
+cargo run -- load-weights ckpt.json "Explain Rust ownership"
+```
+
+## 💾 Checkpointing & Reproducibility
+
+You can save/load checkpoints in JSON v1 format. Partial save/load is supported via name-prefix filters. For size-conscious artifacts, use the demo-small model configuration.
+
+Examples:
+
+```bash
+# Full save
+cargo run -- save-weights ckpt.json
+
+# Partial save/load only lm_head.*
+cargo run -- save-weights ckpt.json --include lm_head
+cargo run -- load-weights ckpt.json --allow-missing --include lm_head "Your prompt"
+
+# Size-conscious small artifact
+cargo run -- save-weights ckpt-small.json --demo-small
+cargo run -- load-weights ckpt-small.json --demo-small "Your prompt"
+
+# Deterministic generation (temperature=0 applied automatically in load-weights flow)
+cargo run -- load-weights ckpt.json "Explain Rust ownership"
 ```
 
 ## 🧠 How Reasoning Works Here
@@ -206,9 +343,9 @@ This runs curated reasoning benchmarks via the `EvaluationHarness`:
 
 Metrics reported:
 
-- Accuracy proxy (string-level heuristics)
+- Accuracy proxy with numeric tolerance for math answers
 - Reasoning depth, clarity, verification presence
-- Performance placeholders (tokens/sec; KV cache planned)
+- Tokens/sec and reasoning overhead
 
 ## 🧭 Roadmap
 

@@ -8,7 +8,7 @@ use ds_r1_rs::{
         generation::GenerationConfig,
         sampling::SamplingConfig,
     },
-    model::{config::ModelConfig, DeepSeekR1Model},
+    model::{DeepSeekR1Model, config::ModelConfig},
     utils::tokenizer::TokenizerConfig,
 };
 
@@ -19,26 +19,58 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create model and inference engine
     let model_config = ModelConfig::default();
     let model = DeepSeekR1Model::new(model_config)?;
-    
+
+    // Architecture telemetry: attention/FF kinds and MLA/MoE stats
+    println!("Architecture Telemetry");
+    println!("----------------------");
+    let att_kinds = model.layer_attention_kinds();
+    let ff_kinds = model.layer_ff_kinds();
+    println!("Attention kinds per layer: {:?}", att_kinds);
+    println!("Feed-forward kinds per layer: {:?}", ff_kinds);
+    let mla_stats = model.layer_mla_compression_stats();
+    for (idx, stat) in mla_stats.iter().enumerate() {
+        if let Some((ratio, savings)) = stat {
+            println!(
+                "  Layer {} MLA: compression_ratio={:.2}, est_kv_memory_savings={:.1}%",
+                idx + 1,
+                ratio,
+                savings
+            );
+        }
+    }
+    let moe_utils = model.layer_moe_utilization();
+    for (idx, util_opt) in moe_utils.iter().enumerate() {
+        if let Some(util) = util_opt {
+            println!("  Layer {} MoE utilization (init): {:?}", idx + 1, util);
+        }
+    }
+    let moe_losses = model.layer_moe_load_balance_loss();
+    for (idx, loss_opt) in moe_losses.iter().enumerate() {
+        if let Some(loss) = loss_opt {
+            println!(
+                "  Layer {} MoE load balance variance (init): {:.6}",
+                idx + 1,
+                loss
+            );
+        }
+    }
+    println!();
+
     let tokenizer_config = TokenizerConfig::default();
     let sampling_config = SamplingConfig::default();
     let mut generation_config = GenerationConfig::default();
     generation_config.max_tokens = 100;
     generation_config.temperature = 0.8;
 
-    let mut engine = InferenceEngine::with_configs(
-        model,
-        tokenizer_config,
-        sampling_config,
-        generation_config,
-    )?;
+    let mut engine =
+        InferenceEngine::with_configs(model, tokenizer_config, sampling_config, generation_config)?;
 
     // Test basic text generation
     println!("1. Basic Text Generation");
     println!("------------------------");
     let prompt = "The future of artificial intelligence is";
     println!("Prompt: {}", prompt);
-    
+
     match engine.generate_text(prompt) {
         Ok(text) => println!("Generated: {}\n", text),
         Err(e) => println!("Error: {} (Expected - model not fully implemented)\n", e),
@@ -49,7 +81,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("-----------------------------");
     let reasoning_prompt = "Explain the process of photosynthesis";
     println!("Prompt: {}", reasoning_prompt);
-    
+
     match engine.generate_with_reasoning(reasoning_prompt) {
         Ok(reasoning_output) => {
             println!("Reasoning steps: {}", reasoning_output.reasoning_steps);
@@ -64,10 +96,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test problem-solving interface
     println!("3. Problem-Solving Interface");
     println!("----------------------------");
-    
+
     let math_problem = "If a train travels 60 mph for 2.5 hours, how far does it go?";
     println!("Math Problem: {}", math_problem);
-    
+
     match engine.solve_math_problem(math_problem) {
         Ok(solution) => {
             println!("Solution steps: {}", solution.reasoning_steps);
@@ -84,7 +116,7 @@ def factorial(n):
 "#;
     println!("Code to explain:");
     println!("{}", code_snippet);
-    
+
     match engine.explain_code(code_snippet) {
         Ok(explanation) => {
             println!("Explanation steps: {}", explanation.reasoning_steps);
@@ -96,11 +128,23 @@ def factorial(n):
     // Test different problem types
     println!("4. Different Problem Types");
     println!("--------------------------");
-    
+
     let problems = [
-        ("Mathematical", "What is 15% of 240?", ProblemType::Mathematical),
-        ("Logical", "All birds can fly. Penguins are birds. Can penguins fly?", ProblemType::Logical),
-        ("General", "How do you make a good first impression?", ProblemType::General),
+        (
+            "Mathematical",
+            "What is 15% of 240?",
+            ProblemType::Mathematical,
+        ),
+        (
+            "Logical",
+            "All birds can fly. Penguins are birds. Can penguins fly?",
+            ProblemType::Logical,
+        ),
+        (
+            "General",
+            "How do you make a good first impression?",
+            ProblemType::General,
+        ),
     ];
 
     for (problem_type, problem, ptype) in &problems {
@@ -117,14 +161,16 @@ def factorial(n):
     // Test generation configuration
     println!("5. Generation Configuration");
     println!("---------------------------");
-    
+
     let mut custom_config = GenerationConfig::default();
     custom_config.max_tokens = 50;
     custom_config.temperature = 0.2; // More deterministic
-    
-    println!("Using custom config (max_tokens: {}, temperature: {})", 
-             custom_config.max_tokens, custom_config.temperature);
-    
+
+    println!(
+        "Using custom config (max_tokens: {}, temperature: {})",
+        custom_config.max_tokens, custom_config.temperature
+    );
+
     match engine.generate_text_with_config("Write a haiku about programming", &custom_config) {
         Ok(output) => {
             println!("Generated text: {}", output.text);

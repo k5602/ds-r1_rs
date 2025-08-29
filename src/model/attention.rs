@@ -126,6 +126,7 @@ pub struct MLAAttention {
     /// Compressed KV dimension
     compressed_kv_dim: usize,
     /// Dropout probability
+    #[allow(dead_code)]
     dropout_prob: f32,
 }
 
@@ -207,6 +208,7 @@ impl MLAAttention {
     }
 
     /// Split tensor into rotary and non-rotary components for MLA
+    #[allow(clippy::type_complexity)]
     fn split_rotary_components(
         &self,
         tensor: &[Vec<f32>],
@@ -296,16 +298,13 @@ impl MLAAttention {
                 let rotary_head_start = head * rotary_dim;
                 let non_rotary_head_start = head * non_rotary_dim;
 
-                // Copy rotary part
-                for i in 0..rotary_dim {
-                    combined_seq[head_start + i] = rotary_seq[rotary_head_start + i];
-                }
-
-                // Copy non-rotary part
-                for i in 0..non_rotary_dim {
-                    combined_seq[head_start + rotary_dim + i] =
-                        non_rotary_seq[non_rotary_head_start + i];
-                }
+                // Copy rotary and non-rotary parts
+                combined_seq[head_start..head_start + rotary_dim].copy_from_slice(
+                    &rotary_seq[rotary_head_start..rotary_head_start + rotary_dim],
+                );
+                combined_seq[head_start + rotary_dim..head_start + self.head_dim].copy_from_slice(
+                    &non_rotary_seq[non_rotary_head_start..non_rotary_head_start + non_rotary_dim],
+                );
             }
 
             result.push(combined_seq);
@@ -316,6 +315,7 @@ impl MLAAttention {
 
     /// Apply rotary embeddings to MLA query and key tensors
     /// This splits tensors, applies rotary to appropriate parts, and recombines
+    #[allow(clippy::type_complexity)]
     pub fn apply_mla_rotary(
         &self,
         queries: &[Vec<f32>],
@@ -369,17 +369,16 @@ impl MLAAttention {
     }
 
     /// Apply causal mask to attention scores
-    fn apply_causal_mask(&self, scores: &mut Vec<Vec<f32>>) {
-        let seq_len = scores.len();
-        for i in 0..seq_len {
-            for j in (i + 1)..seq_len {
-                scores[i][j] = f32::NEG_INFINITY;
+    fn apply_causal_mask(&self, scores: &mut [Vec<f32>]) {
+        for (i, row) in scores.iter_mut().enumerate() {
+            for v in row.iter_mut().skip(i + 1) {
+                *v = f32::NEG_INFINITY;
             }
         }
     }
 
     /// Apply softmax to attention scores
-    fn softmax(&self, scores: &mut Vec<Vec<f32>>) -> Result<()> {
+    fn softmax(&self, scores: &mut [Vec<f32>]) -> Result<()> {
         for row in scores {
             // Find max for numerical stability
             let max_val = row.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
@@ -681,6 +680,7 @@ pub struct StandardAttention {
     /// Hidden dimension
     hidden_size: usize,
     /// Dropout probability
+    #[allow(dead_code)]
     dropout_prob: f32,
 }
 
@@ -729,17 +729,16 @@ impl StandardAttention {
     }
 
     /// Apply causal mask to attention scores
-    fn apply_causal_mask(&self, scores: &mut Vec<Vec<f32>>) {
-        let seq_len = scores.len();
-        for i in 0..seq_len {
-            for j in (i + 1)..seq_len {
-                scores[i][j] = f32::NEG_INFINITY;
+    fn apply_causal_mask(&self, scores: &mut [Vec<f32>]) {
+        for (i, row) in scores.iter_mut().enumerate() {
+            for v in row.iter_mut().skip(i + 1) {
+                *v = f32::NEG_INFINITY;
             }
         }
     }
 
     /// Apply softmax to attention scores
-    fn softmax(&self, scores: &mut Vec<Vec<f32>>) -> Result<()> {
+    fn softmax(&self, scores: &mut [Vec<f32>]) -> Result<()> {
         for row in scores {
             // Find max for numerical stability
             let max_val = row.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
@@ -869,6 +868,160 @@ impl StandardAttention {
     /// Get head dimension
     pub fn head_dim(&self) -> usize {
         self.head_dim
+    }
+
+    /// Incremental decoding step with per-head KV cache.
+    /// - x_t: current token hidden input [hidden_size]
+    /// - position: zero-based position in the sequence (should equal current cache length)
+    /// Returns: concatenated per-head context projected back to the hidden space; a Vec<f32> of length hidden_size for this token position.
+    pub fn forward_next(
+        &self,
+        cache: &mut StandardAttentionCache,
+        x_t: &[f32],
+        position: usize,
+    ) -> Result<Vec<f32>> {
+        // Validate input shape
+        if x_t.len() != self.hidden_size {
+            return Err(ModelError::Forward(format!(
+                "forward_next: input size {} doesn't match hidden_size {}",
+                x_t.len(),
+                self.hidden_size
+            )));
+        }
+
+        // Initialize cache heads if needed
+        cache.ensure_heads(self.num_heads);
+
+        // Validate position monotonicity with cache length
+        let current_len = cache.seq_len();
+        if position != current_len {
+            return Err(ModelError::Forward(format!(
+                "forward_next: position {} must equal current cache length {}",
+                position, current_len
+            )));
+        }
+
+        // Project Q, K, V for the single token
+        let q_full = self.q_proj.forward(x_t)?;
+        let k_full = self.k_proj.forward(x_t)?;
+        let v_full = self.v_proj.forward(x_t)?;
+
+        // Prepare concatenated per-head outputs
+        let mut concat = vec![0.0f32; self.hidden_size];
+        let scale = (self.head_dim as f32).sqrt();
+
+        for head in 0..self.num_heads {
+            let start = head * self.head_dim;
+            let end = start + self.head_dim;
+
+            // Slice per-head projections
+            let q_h = &q_full[start..end];
+            let k_h = &k_full[start..end];
+            let v_h = &v_full[start..end];
+
+            // Apply RoPE to Q and K at current position
+            let q_rot = self.rope.apply_rotary(q_h, position)?;
+            let k_rot = self.rope.apply_rotary(k_h, position)?;
+
+            // Append new K,V to cache
+            cache.k[head].push(k_rot);
+            cache.v[head].push(v_h.to_vec());
+
+            // Compute attention scores against all cached keys for this head
+            let seq_len = cache.k[head].len();
+            let mut scores = vec![0.0f32; seq_len];
+
+            for (t, k_t) in cache.k[head].iter().enumerate() {
+                let mut dot = 0.0f32;
+                for i in 0..self.head_dim {
+                    dot += q_rot[i] * k_t[i];
+                }
+                scores[t] = dot / scale;
+            }
+
+            // Causal mask is implicit as we never reference future positions
+
+            // Softmax over scores
+            let max_val = scores
+                .iter()
+                .fold(f32::NEG_INFINITY, |a, &b| if b > a { b } else { a });
+            let mut sum = 0.0f32;
+            for s in scores.iter_mut() {
+                *s = (*s - max_val).exp();
+                sum += *s;
+            }
+            if sum > 0.0 {
+                for s in scores.iter_mut() {
+                    *s /= sum;
+                }
+            }
+
+            // Weighted sum over cached V
+            let mut ctx = vec![0.0f32; self.head_dim];
+            for (&weight, v_t) in scores.iter().zip(&cache.v[head]) {
+                for i in 0..self.head_dim {
+                    ctx[i] += weight * v_t[i];
+                }
+            }
+
+            // Write head context into concatenated buffer
+            concat[start..end].copy_from_slice(&ctx[..self.head_dim]);
+        }
+
+        // Final output projection
+        let out = self.o_proj.forward(&concat)?;
+        Ok(out)
+    }
+}
+
+pub struct StandardAttentionCache {
+    /// Per-head cached keys: [num_heads][seq_len][head_dim]
+    k: Vec<Vec<Vec<f32>>>,
+    /// Per-head cached values: [num_heads][seq_len][head_dim]
+    v: Vec<Vec<Vec<f32>>>,
+}
+
+impl StandardAttentionCache {
+    /// Create a new, empty cache for a given number of heads.
+    pub fn new(num_heads: usize) -> Self {
+        let mut k = Vec::with_capacity(num_heads);
+        let mut v = Vec::with_capacity(num_heads);
+        for _ in 0..num_heads {
+            k.push(Vec::new());
+            v.push(Vec::new());
+        }
+        Self { k, v }
+    }
+
+    /// Ensure head arrays are present (idempotent).
+    fn ensure_heads(&mut self, num_heads: usize) {
+        if self.k.len() < num_heads {
+            let missing = num_heads - self.k.len();
+            for _ in 0..missing {
+                self.k.push(Vec::new());
+            }
+        }
+        if self.v.len() < num_heads {
+            let missing = num_heads - self.v.len();
+            for _ in 0..missing {
+                self.v.push(Vec::new());
+            }
+        }
+    }
+
+    /// Current cached sequence length (0 if empty).
+    pub fn seq_len(&self) -> usize {
+        self.k.first().map(|h| h.len()).unwrap_or(0)
+    }
+
+    /// Clear all cached keys/values.
+    pub fn clear(&mut self) {
+        for h in &mut self.k {
+            h.clear();
+        }
+        for h in &mut self.v {
+            h.clear();
+        }
     }
 }
 
@@ -1214,7 +1367,7 @@ mod tests {
         let num_heads = 8;
 
         // Standard attention uses full KV representations
-        let standard = StandardAttention::new(hidden_size, num_heads, 2048, 10000.0).unwrap();
+        let _standard = StandardAttention::new(hidden_size, num_heads, 2048, 10000.0).unwrap();
 
         // MLA uses compressed KV representations
         let mla = MLAAttention::new_default(hidden_size, num_heads, 0.5).unwrap();
@@ -1579,7 +1732,7 @@ mod tests {
         let num_heads = 8;
         let seq_len = 200;
 
-        let standard = StandardAttention::new(hidden_size, num_heads, 2048, 10000.0).unwrap();
+        let _standard = StandardAttention::new(hidden_size, num_heads, 2048, 10000.0).unwrap();
         let mla = MLAAttention::new_default(hidden_size, num_heads, 0.5).unwrap();
 
         // Calculate memory usage for both
