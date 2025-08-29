@@ -2,8 +2,8 @@
 
 [![Crates.io](https://img.shields.io/crates/v/ds-r1-rs.svg)](https://crates.io/crates/ds-r1-rs)
 [![docs.rs](https://docs.rs/ds-r1-rs/badge.svg)](https://docs.rs/ds-r1-rs)
-[![CI](https://github.com/k5602/ds-r1-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/k5602/ds-r1-rs/actions/workflows/ci.yml)
-[![Docs](https://github.com/k5602/ds-r1-rs/actions/workflows/docs.yml/badge.svg)](https://github.com/k5602/ds-r1-rs/actions/workflows/docs.yml)
+[![CI](https://github.com/k5602/ds-r1_rs/actions/workflows/ci.yml/badge.svg)](https://github.com/k5602/ds-r1_rs/actions/workflows/ci.yml)
+[![Docs](https://github.com/k5602/ds-r1_rs/actions/workflows/docs.yml/badge.svg)](https://github.com/k5602/ds-r1_rs/actions/workflows/docs.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 A Rust implementation of a DeepSeek R1–inspired reasoning model focused on clarity, testability, and strong engineering practices. This project is designed to be an impressive portfolio piece: it includes a modular transformer architecture, reasoning-aware inference, evaluation harness, examples, comprehensive tests, and CI.
