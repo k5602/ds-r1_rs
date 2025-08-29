@@ -10,9 +10,9 @@ pub mod reasoning;
 pub mod sampling;
 
 // Re-export key types
-pub use code_analyzer::{CodeAnalyzer, CodeAnalysis, CodeExplanation, CodePattern, Complexity};
+pub use code_analyzer::{CodeAnalysis, CodeAnalyzer, CodeExplanation, CodePattern, Complexity};
 pub use engine::InferenceEngine;
 pub use generation::{GenerationConfig, GenerationOutput};
-pub use math_solver::{MathProblemSolver, MathSolution, MathStep, MathProblemType};
+pub use math_solver::{MathProblemSolver, MathProblemType, MathSolution, MathStep};
 pub use reasoning::{ReasoningEngine, ReasoningOutput, ReasoningState};
 pub use sampling::{Sampler, SamplingConfig};

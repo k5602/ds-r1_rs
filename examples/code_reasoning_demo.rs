@@ -4,8 +4,8 @@
 //! reasoning, algorithm analysis, and code understanding evaluation.
 
 use ds_r1_rs::{
-    inference::{CodeAnalyzer, CodeAnalysis, CodeExplanation},
-    training::{CodeExamplesDataset, AlgorithmType},
+    inference::{CodeAnalysis, CodeAnalyzer, CodeExplanation},
+    training::{AlgorithmType, CodeExamplesDataset},
 };
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -43,13 +43,13 @@ impl CodeReasoningDemo {
 
         // Demonstrate analysis of different algorithm types
         self.demonstrate_algorithm_analysis()?;
-        
+
         // Show step-by-step code explanation
         self.demonstrate_step_by_step_explanation()?;
-        
+
         // Demonstrate code generation with reasoning
         self.demonstrate_code_generation_reasoning()?;
-        
+
         // Evaluate code understanding quality
         self.demonstrate_evaluation_metrics()?;
 
@@ -72,22 +72,33 @@ impl CodeReasoningDemo {
             let examples = self.dataset.get_examples_by_type(algo_type.clone());
             if let Some(example) = examples.first() {
                 println!("\n🔍 Analyzing: {} ({:?})", example.name, algo_type);
-                
-                let analysis = self.analyzer.analyze_code(&example.code, &example.language)?;
-                
+
+                let analysis = self
+                    .analyzer
+                    .analyze_code(&example.code, &example.language)?;
+
                 println!("  📈 Complexity Analysis:");
                 println!("    • Time: {}", analysis.time_complexity);
                 println!("    • Space: {}", analysis.space_complexity);
-                
+
                 println!("  🎯 Identified Patterns:");
                 for pattern in &analysis.patterns {
                     println!("    • {:?}", pattern);
                 }
-                
+
                 println!("  ⭐ Code Quality:");
-                println!("    • Readability: {:.1}/1.0", analysis.quality.readability_score);
-                println!("    • Maintainability: {:.1}/1.0", analysis.quality.maintainability_score);
-                println!("    • Efficiency: {:.1}/1.0", analysis.quality.efficiency_score);
+                println!(
+                    "    • Readability: {:.1}/1.0",
+                    analysis.quality.readability_score
+                );
+                println!(
+                    "    • Maintainability: {:.1}/1.0",
+                    analysis.quality.maintainability_score
+                );
+                println!(
+                    "    • Efficiency: {:.1}/1.0",
+                    analysis.quality.efficiency_score
+                );
             }
         }
 
@@ -105,15 +116,14 @@ impl CodeReasoningDemo {
             println!("\n🎯 Explaining: {}", binary_search_example.name);
             println!("\n📋 Code:");
             println!("{}", binary_search_example.code);
-            
-            let explanation = self.analyzer.explain_code(
-                &binary_search_example.code, 
-                &binary_search_example.language
-            )?;
-            
+
+            let explanation = self
+                .analyzer
+                .explain_code(&binary_search_example.code, &binary_search_example.language)?;
+
             println!("\n🔍 Overview:");
             println!("{}", explanation.overview);
-            
+
             println!("\n📚 Step-by-Step Breakdown:");
             for (i, step) in explanation.steps.iter().enumerate() {
                 println!("  {}. Code: `{}`", i + 1, step.code_section.trim());
@@ -124,13 +134,13 @@ impl CodeReasoningDemo {
                 }
                 println!();
             }
-            
+
             println!("🧮 Complexity Analysis:");
             println!("{}", explanation.complexity_analysis);
-            
+
             println!("\n🎨 Pattern Analysis:");
             println!("{}", explanation.pattern_analysis);
-            
+
             if !explanation.best_practices_notes.is_empty() {
                 println!("\n✅ Best Practices:");
                 for practice in &explanation.best_practices_notes {
@@ -149,18 +159,18 @@ impl CodeReasoningDemo {
 
         // Simulate reasoning about implementing a simple algorithm
         println!("\n💭 Problem: Implement a function to find the maximum element in an array");
-        
+
         println!("\n🤔 Reasoning Process:");
         println!("1. **Approach Selection**: Linear scan is most straightforward");
         println!("   • Could use sorting (O(n log n)) but that's overkill");
         println!("   • Linear scan is O(n) and optimal for this problem");
         println!("   • Need to handle empty array edge case");
-        
+
         println!("\n2. **Implementation Strategy**:");
         println!("   • Use iterator for idiomatic Rust code");
         println!("   • Return Option<T> to handle empty arrays safely");
         println!("   • Make it generic to work with any comparable type");
-        
+
         println!("\n3. **Generated Code with Reasoning**:");
         let generated_code = r#"fn find_max<T: PartialOrd + Copy>(arr: &[T]) -> Option<T> {
     // Handle empty array case - return None for safety
@@ -181,22 +191,25 @@ impl CodeReasoningDemo {
     
     Some(max)
 }"#;
-        
+
         println!("{}", generated_code);
-        
+
         println!("\n🎯 Reasoning Behind Design Choices:");
         println!("  • **Generic Type T**: Works with any comparable type (i32, f64, etc.)");
         println!("  • **PartialOrd Bound**: Enables comparison operations");
         println!("  • **Copy Bound**: Allows copying values without ownership issues");
         println!("  • **Option Return**: Safe handling of empty input");
         println!("  • **Iterator with skip(1)**: Avoids redundant self-comparison");
-        
+
         // Analyze the generated code
         let analysis = self.analyzer.analyze_code(generated_code, "rust")?;
         println!("\n📊 Analysis of Generated Code:");
         println!("  • Time Complexity: {}", analysis.time_complexity);
         println!("  • Space Complexity: {}", analysis.space_complexity);
-        println!("  • Quality Score: {:.1}/1.0", analysis.quality.readability_score);
+        println!(
+            "  • Quality Score: {:.1}/1.0",
+            analysis.quality.readability_score
+        );
 
         Ok(())
     }
@@ -210,21 +223,35 @@ impl CodeReasoningDemo {
 
         // Evaluate understanding quality for different examples
         let examples = self.dataset.get_examples();
-        for example in examples.iter().take(3) { // Evaluate first 3 examples
+        for example in examples.iter().take(3) {
+            // Evaluate first 3 examples
             println!("\n🔍 Evaluating: {}", example.name);
-            
-            let analysis = self.analyzer.analyze_code(&example.code, &example.language)?;
-            let explanation = self.analyzer.explain_code(&example.code, &example.language)?;
-            
+
+            let analysis = self
+                .analyzer
+                .analyze_code(&example.code, &example.language)?;
+            let explanation = self
+                .analyzer
+                .explain_code(&example.code, &example.language)?;
+
             let metrics = self.evaluate_understanding_quality(&analysis, &explanation, example);
-            
+
             println!("  📊 Quality Metrics:");
-            println!("    • Explanation Completeness: {:.2}/1.0", metrics.explanation_completeness);
-            println!("    • Technical Accuracy: {:.2}/1.0", metrics.technical_accuracy);
+            println!(
+                "    • Explanation Completeness: {:.2}/1.0",
+                metrics.explanation_completeness
+            );
+            println!(
+                "    • Technical Accuracy: {:.2}/1.0",
+                metrics.technical_accuracy
+            );
             println!("    • Clarity Score: {:.2}/1.0", metrics.clarity_score);
-            println!("    • Complexity Analysis: {:.2}/1.0", metrics.complexity_analysis_quality);
+            println!(
+                "    • Complexity Analysis: {:.2}/1.0",
+                metrics.complexity_analysis_quality
+            );
             println!("    • Overall Score: {:.2}/1.0", metrics.overall_score);
-            
+
             total_metrics.push(metrics);
         }
 
@@ -232,11 +259,23 @@ impl CodeReasoningDemo {
         let avg_metrics = self.calculate_average_metrics(&total_metrics);
         println!("\n🎯 Overall Performance Summary:");
         println!("  📊 Average Metrics Across All Examples:");
-        println!("    • Explanation Completeness: {:.2}/1.0", avg_metrics.explanation_completeness);
-        println!("    • Technical Accuracy: {:.2}/1.0", avg_metrics.technical_accuracy);
+        println!(
+            "    • Explanation Completeness: {:.2}/1.0",
+            avg_metrics.explanation_completeness
+        );
+        println!(
+            "    • Technical Accuracy: {:.2}/1.0",
+            avg_metrics.technical_accuracy
+        );
         println!("    • Clarity Score: {:.2}/1.0", avg_metrics.clarity_score);
-        println!("    • Complexity Analysis: {:.2}/1.0", avg_metrics.complexity_analysis_quality);
-        println!("    • **Overall Score: {:.2}/1.0**", avg_metrics.overall_score);
+        println!(
+            "    • Complexity Analysis: {:.2}/1.0",
+            avg_metrics.complexity_analysis_quality
+        );
+        println!(
+            "    • **Overall Score: {:.2}/1.0**",
+            avg_metrics.overall_score
+        );
 
         // Provide performance interpretation
         self.interpret_performance(&avg_metrics);
@@ -253,19 +292,22 @@ impl CodeReasoningDemo {
     ) -> CodeUnderstandingMetrics {
         // Evaluate explanation completeness
         let explanation_completeness = self.evaluate_completeness(explanation, expected);
-        
+
         // Evaluate technical accuracy
         let technical_accuracy = self.evaluate_technical_accuracy(analysis, expected);
-        
+
         // Evaluate clarity
         let clarity_score = self.evaluate_clarity(explanation);
-        
+
         // Evaluate complexity analysis quality
         let complexity_analysis_quality = self.evaluate_complexity_analysis(analysis, expected);
-        
+
         // Calculate overall score
-        let overall_score = (explanation_completeness + technical_accuracy + 
-                           clarity_score + complexity_analysis_quality) / 4.0;
+        let overall_score = (explanation_completeness
+            + technical_accuracy
+            + clarity_score
+            + complexity_analysis_quality)
+            / 4.0;
 
         CodeUnderstandingMetrics {
             explanation_completeness,
@@ -284,11 +326,15 @@ impl CodeReasoningDemo {
     ) -> f32 {
         let expected_steps = expected.expected_explanation.step_by_step.len();
         let actual_steps = explanation.steps.len();
-        
+
         // Score based on step coverage and content quality
         let step_coverage = (actual_steps.min(expected_steps) as f32) / (expected_steps as f32);
-        let content_quality = if explanation.overview.len() > 50 { 0.8 } else { 0.5 };
-        
+        let content_quality = if explanation.overview.len() > 50 {
+            0.8
+        } else {
+            0.5
+        };
+
         (step_coverage + content_quality) / 2.0
     }
 
@@ -304,9 +350,11 @@ impl CodeReasoningDemo {
         // Check if key concepts are identified
         for concept in &expected.key_concepts {
             total_checks += 1.0;
-            if analysis.explanation_steps.iter().any(|step| 
-                step.to_lowercase().contains(&concept.to_lowercase())
-            ) {
+            if analysis
+                .explanation_steps
+                .iter()
+                .any(|step| step.to_lowercase().contains(&concept.to_lowercase()))
+            {
                 accuracy_score += 1.0;
             }
         }
@@ -327,27 +375,27 @@ impl CodeReasoningDemo {
     /// Evaluate clarity of explanation
     fn evaluate_clarity(&self, explanation: &CodeExplanation) -> f32 {
         let mut clarity_score = 0.0;
-        
+
         // Check overview quality
         if explanation.overview.len() > 30 && explanation.overview.len() < 200 {
             clarity_score += 0.3;
         }
-        
+
         // Check step explanations
         if explanation.steps.len() >= 3 {
             clarity_score += 0.3;
         }
-        
+
         // Check if complexity analysis is provided
         if !explanation.complexity_analysis.is_empty() {
             clarity_score += 0.2;
         }
-        
+
         // Check if pattern analysis is provided
         if !explanation.pattern_analysis.is_empty() {
             clarity_score += 0.2;
         }
-        
+
         clarity_score
     }
 
@@ -358,22 +406,25 @@ impl CodeReasoningDemo {
         _expected: &ds_r1_rs::training::CodeExample,
     ) -> f32 {
         let mut score = 0.0;
-        
+
         // Check if time complexity is identified
         if analysis.time_complexity != ds_r1_rs::inference::Complexity::Unknown {
             score += 0.5;
         }
-        
+
         // Check if space complexity is identified
         if analysis.space_complexity != ds_r1_rs::inference::Complexity::Unknown {
             score += 0.5;
         }
-        
+
         score
     }
 
     /// Calculate average metrics across all evaluations
-    fn calculate_average_metrics(&self, metrics: &[CodeUnderstandingMetrics]) -> CodeUnderstandingMetrics {
+    fn calculate_average_metrics(
+        &self,
+        metrics: &[CodeUnderstandingMetrics],
+    ) -> CodeUnderstandingMetrics {
         if metrics.is_empty() {
             return CodeUnderstandingMetrics {
                 explanation_completeness: 0.0,
@@ -386,10 +437,18 @@ impl CodeReasoningDemo {
 
         let count = metrics.len() as f32;
         CodeUnderstandingMetrics {
-            explanation_completeness: metrics.iter().map(|m| m.explanation_completeness).sum::<f32>() / count,
+            explanation_completeness: metrics
+                .iter()
+                .map(|m| m.explanation_completeness)
+                .sum::<f32>()
+                / count,
             technical_accuracy: metrics.iter().map(|m| m.technical_accuracy).sum::<f32>() / count,
             clarity_score: metrics.iter().map(|m| m.clarity_score).sum::<f32>() / count,
-            complexity_analysis_quality: metrics.iter().map(|m| m.complexity_analysis_quality).sum::<f32>() / count,
+            complexity_analysis_quality: metrics
+                .iter()
+                .map(|m| m.complexity_analysis_quality)
+                .sum::<f32>()
+                / count,
             overall_score: metrics.iter().map(|m| m.overall_score).sum::<f32>() / count,
         }
     }
@@ -397,7 +456,7 @@ impl CodeReasoningDemo {
     /// Interpret and provide feedback on performance
     fn interpret_performance(&self, metrics: &CodeUnderstandingMetrics) {
         println!("\n🎭 Performance Interpretation:");
-        
+
         match metrics.overall_score {
             score if score >= 0.8 => {
                 println!("  🌟 Excellent: The code understanding system demonstrates strong");
@@ -419,7 +478,9 @@ impl CodeReasoningDemo {
 
         println!("\n💡 Recommendations:");
         if metrics.explanation_completeness < 0.7 {
-            println!("  • Enhance explanation completeness with more detailed step-by-step breakdowns");
+            println!(
+                "  • Enhance explanation completeness with more detailed step-by-step breakdowns"
+            );
         }
         if metrics.technical_accuracy < 0.7 {
             println!("  • Improve technical accuracy by better pattern and concept identification");

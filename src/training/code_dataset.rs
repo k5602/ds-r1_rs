@@ -66,7 +66,7 @@ impl CodeExamplesDataset {
         let mut dataset = Self {
             examples: Vec::new(),
         };
-        
+
         dataset.populate_examples();
         dataset
     }
@@ -462,7 +462,7 @@ mod tests {
         let dataset = CodeExamplesDataset::new();
         let sorting_examples = dataset.get_examples_by_type(AlgorithmType::Sorting);
         assert!(!sorting_examples.is_empty());
-        
+
         for example in sorting_examples {
             assert_eq!(example.algorithm_type, AlgorithmType::Sorting);
         }
@@ -473,7 +473,7 @@ mod tests {
         let dataset = CodeExamplesDataset::new();
         let beginner_examples = dataset.get_examples_by_difficulty(Difficulty::Beginner);
         assert!(!beginner_examples.is_empty());
-        
+
         for example in beginner_examples {
             assert_eq!(example.difficulty, Difficulty::Beginner);
         }
@@ -484,7 +484,7 @@ mod tests {
         let dataset = CodeExamplesDataset::new();
         let rust_examples = dataset.get_examples_by_language("rust");
         assert!(!rust_examples.is_empty());
-        
+
         for example in rust_examples {
             assert_eq!(example.language, "rust");
         }
@@ -494,7 +494,7 @@ mod tests {
     fn test_add_example() {
         let mut dataset = CodeExamplesDataset::new();
         let initial_len = dataset.len();
-        
+
         let new_example = CodeExample {
             name: "Test Example".to_string(),
             language: "rust".to_string(),
@@ -511,7 +511,7 @@ mod tests {
             },
             key_concepts: vec!["test".to_string()],
         };
-        
+
         dataset.add_example(new_example);
         assert_eq!(dataset.len(), initial_len + 1);
     }
@@ -520,14 +520,14 @@ mod tests {
     fn test_example_content() {
         let dataset = CodeExamplesDataset::new();
         let examples = dataset.get_examples();
-        
+
         // Check that we have the expected examples
         let binary_search = examples.iter().find(|e| e.name == "Binary Search");
         assert!(binary_search.is_some());
-        
+
         let bubble_sort = examples.iter().find(|e| e.name == "Bubble Sort");
         assert!(bubble_sort.is_some());
-        
+
         let fibonacci = examples.iter().find(|e| e.name == "Fibonacci Recursive");
         assert!(fibonacci.is_some());
     }

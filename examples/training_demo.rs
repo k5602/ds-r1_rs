@@ -4,8 +4,8 @@
 
 use ds_r1_rs::model::{DeepSeekR1Model, ModelConfig};
 use ds_r1_rs::training::{
-    BasicTrainer, DataLoader, OptimizerConfig, RLTrainer, SyntheticDataGenerator, TrainingBatch,
-    TrainingExample, ProblemType,
+    BasicTrainer, DataLoader, OptimizerConfig, ProblemType, RLTrainer, SyntheticDataGenerator,
+    TrainingBatch, TrainingExample,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -53,7 +53,7 @@ fn demonstrate_supervised_learning(
         weight_decay: 0.01,
         ..OptimizerConfig::default()
     };
-    
+
     let mut trainer = BasicTrainer::with_optimizer_config(model, optimizer_config)?;
     println!("   Created supervised trainer");
 
@@ -78,9 +78,13 @@ fn demonstrate_supervised_learning(
 
         let avg_loss = epoch_loss / batch_count as f32;
         let avg_accuracy = epoch_accuracy / batch_count as f32;
-        
-        println!("     Epoch {}: Loss = {:.4}, Accuracy = {:.2}%", 
-                epoch, avg_loss, avg_accuracy * 100.0);
+
+        println!(
+            "     Epoch {}: Loss = {:.4}, Accuracy = {:.2}%",
+            epoch,
+            avg_loss,
+            avg_accuracy * 100.0
+        );
     }
 
     // Evaluation
@@ -104,7 +108,7 @@ fn demonstrate_reinforcement_learning(
         weight_decay: 0.001,
         ..OptimizerConfig::default()
     };
-    
+
     let mut rl_trainer = RLTrainer::with_optimizer_config(model, optimizer_config)?;
     println!("   Created RL trainer with REINFORCE algorithm");
 
@@ -130,9 +134,14 @@ fn demonstrate_reinforcement_learning(
         let avg_reward = -episode_reward / batch_count as f32; // Convert back to positive reward
         let avg_accuracy = episode_accuracy / batch_count as f32;
         let baseline = rl_trainer.baseline();
-        
-        println!("     Episode {}: Avg Reward = {:.4}, Accuracy = {:.2}%, Baseline = {:.4}", 
-                episode, avg_reward, avg_accuracy * 100.0, baseline);
+
+        println!(
+            "     Episode {}: Avg Reward = {:.4}, Accuracy = {:.2}%, Baseline = {:.4}",
+            episode,
+            avg_reward,
+            avg_accuracy * 100.0,
+            baseline
+        );
     }
 
     // RL evaluation
@@ -140,7 +149,10 @@ fn demonstrate_reinforcement_learning(
     let rl_metrics = rl_trainer.evaluate(test_examples)?;
     println!("     Average Reward: {:.4}", rl_metrics.average_reward);
     println!("     Accuracy: {:.2}%", rl_metrics.accuracy * 100.0);
-    println!("     Reasoning Quality: {:.4}", rl_metrics.reasoning_quality);
+    println!(
+        "     Reasoning Quality: {:.4}",
+        rl_metrics.reasoning_quality
+    );
     println!("     Current Baseline: {:.4}", rl_metrics.baseline);
 
     // Show detailed RL metrics
@@ -154,16 +166,16 @@ fn demonstrate_reinforcement_learning(
 #[allow(dead_code)]
 fn demonstrate_problem_types() -> Result<(), Box<dyn std::error::Error>> {
     println!("🔍 Problem Type Analysis:");
-    
+
     let mut generator = SyntheticDataGenerator::new();
     let examples = generator.generate_mixed_dataset(12);
-    
+
     let batch = TrainingBatch::new(examples);
     let by_type = batch.split_by_type();
-    
+
     for (problem_type, examples) in by_type {
         println!("   {:?}: {} examples", problem_type, examples.len());
-        
+
         // Show one example of each type
         if let Some(example) = examples.first() {
             println!("     Example: {}", example.input);
@@ -174,6 +186,6 @@ fn demonstrate_problem_types() -> Result<(), Box<dyn std::error::Error>> {
         }
         println!();
     }
-    
+
     Ok(())
 }

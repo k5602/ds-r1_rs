@@ -20,10 +20,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut engine = InferenceEngine::new(model)?;
 
     // Initialize the mathematical problem solver
-    let mut math_solver = MathProblemSolver::new(
-        config.thinking_token_id,
-        config.thinking_token_id + 1,
-    );
+    let mut math_solver =
+        MathProblemSolver::new(config.thinking_token_id, config.thinking_token_id + 1);
 
     println!("🧮 Mathematical Problem Solving Demonstrations");
     println!("===============================================\n");
@@ -37,13 +35,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("✅ Mathematical reasoning demo completed!");
     println!("\nNote: This demo shows the mathematical reasoning structure.");
-    println!("Full reasoning capabilities will be available once the transformer model is complete.");
+    println!(
+        "Full reasoning capabilities will be available once the transformer model is complete."
+    );
 
     Ok(())
 }
 
 /// Demonstrate arithmetic problem solving
-fn demonstrate_arithmetic_problems(solver: &mut MathProblemSolver) -> Result<(), Box<dyn std::error::Error>> {
+fn demonstrate_arithmetic_problems(
+    solver: &mut MathProblemSolver,
+) -> Result<(), Box<dyn std::error::Error>> {
     println!("1. Arithmetic Problems");
     println!("----------------------");
 
@@ -56,7 +58,7 @@ fn demonstrate_arithmetic_problems(solver: &mut MathProblemSolver) -> Result<(),
 
     for (i, problem) in arithmetic_problems.iter().enumerate() {
         println!("Problem {}: {}", i + 1, problem);
-        
+
         match solver.solve_problem(problem) {
             Ok(solution) => {
                 println!("Type: {:?}", solution.problem_type);
@@ -84,7 +86,9 @@ fn demonstrate_arithmetic_problems(solver: &mut MathProblemSolver) -> Result<(),
 }
 
 /// Demonstrate algebraic problem solving
-fn demonstrate_algebraic_problems(solver: &mut MathProblemSolver) -> Result<(), Box<dyn std::error::Error>> {
+fn demonstrate_algebraic_problems(
+    solver: &mut MathProblemSolver,
+) -> Result<(), Box<dyn std::error::Error>> {
     println!("2. Algebraic Problems");
     println!("---------------------");
 
@@ -97,7 +101,7 @@ fn demonstrate_algebraic_problems(solver: &mut MathProblemSolver) -> Result<(), 
 
     for (i, problem) in algebra_problems.iter().enumerate() {
         println!("Problem {}: {}", i + 1, problem);
-        
+
         match solver.solve_problem(problem) {
             Ok(solution) => {
                 println!("Type: {:?}", solution.problem_type);
@@ -128,7 +132,9 @@ fn demonstrate_algebraic_problems(solver: &mut MathProblemSolver) -> Result<(), 
 }
 
 /// Demonstrate word problem solving
-fn demonstrate_word_problems(solver: &mut MathProblemSolver) -> Result<(), Box<dyn std::error::Error>> {
+fn demonstrate_word_problems(
+    solver: &mut MathProblemSolver,
+) -> Result<(), Box<dyn std::error::Error>> {
     println!("3. Word Problems");
     println!("----------------");
 
@@ -141,7 +147,7 @@ fn demonstrate_word_problems(solver: &mut MathProblemSolver) -> Result<(), Box<d
 
     for (i, problem) in word_problems.iter().enumerate() {
         println!("Problem {}: {}", i + 1, problem);
-        
+
         match solver.solve_problem(problem) {
             Ok(solution) => {
                 println!("Type: {:?}", solution.problem_type);
@@ -169,7 +175,9 @@ fn demonstrate_word_problems(solver: &mut MathProblemSolver) -> Result<(), Box<d
 }
 
 /// Demonstrate equation solving
-fn demonstrate_equation_solving(solver: &mut MathProblemSolver) -> Result<(), Box<dyn std::error::Error>> {
+fn demonstrate_equation_solving(
+    solver: &mut MathProblemSolver,
+) -> Result<(), Box<dyn std::error::Error>> {
     println!("4. Equation Solving");
     println!("-------------------");
 
@@ -182,7 +190,7 @@ fn demonstrate_equation_solving(solver: &mut MathProblemSolver) -> Result<(), Bo
 
     for (i, problem) in equation_problems.iter().enumerate() {
         println!("Problem {}: {}", i + 1, problem);
-        
+
         match solver.solve_problem(problem) {
             Ok(solution) => {
                 println!("Type: {:?}", solution.problem_type);
@@ -210,7 +218,9 @@ fn demonstrate_equation_solving(solver: &mut MathProblemSolver) -> Result<(), Bo
 }
 
 /// Demonstrate integration with inference engine
-fn demonstrate_inference_engine_integration(engine: &mut InferenceEngine) -> Result<(), Box<dyn std::error::Error>> {
+fn demonstrate_inference_engine_integration(
+    engine: &mut InferenceEngine,
+) -> Result<(), Box<dyn std::error::Error>> {
     println!("5. Inference Engine Integration");
     println!("-------------------------------");
 
@@ -223,7 +233,7 @@ fn demonstrate_inference_engine_integration(engine: &mut InferenceEngine) -> Res
 
     for (i, problem) in math_problems.iter().enumerate() {
         println!("Problem {}: {}", i + 1, problem);
-        
+
         // Use the inference engine's math problem solving capability
         match engine.solve_math_problem_detailed(problem) {
             Ok(solution) => {
@@ -256,7 +266,10 @@ fn demonstrate_mathematical_formatting() {
         ("Algebraic Solution", "2x + 5 = 13 → 2x = 8 → x = 4"),
         ("Fraction", "3/4 = 0.75"),
         ("Percentage", "25% of 80 = 0.25 × 80 = 20"),
-        ("Area Formula", "Area = length × width = 12 × 8 = 96 square units"),
+        (
+            "Area Formula",
+            "Area = length × width = 12 × 8 = 96 square units",
+        ),
     ];
 
     for (category, example) in examples {
@@ -275,24 +288,31 @@ mod tests {
         let config = ModelConfig::default();
         let model = DeepSeekR1Model::new(config.clone()).unwrap();
         let _engine = InferenceEngine::new(model).unwrap();
-        
-        let _math_solver = MathProblemSolver::new(
-            config.thinking_token_id,
-            config.thinking_token_id + 1,
-        );
+
+        let _math_solver =
+            MathProblemSolver::new(config.thinking_token_id, config.thinking_token_id + 1);
     }
 
     #[test]
     fn test_problem_type_detection() {
         let config = ModelConfig::default();
-        let solver = MathProblemSolver::new(
-            config.thinking_token_id,
-            config.thinking_token_id + 1,
-        );
+        let solver = MathProblemSolver::new(config.thinking_token_id, config.thinking_token_id + 1);
 
-        assert_eq!(solver.detect_problem_type("What is 2 + 2?"), MathProblemType::Arithmetic);
-        assert_eq!(solver.detect_problem_type("Solve for x"), MathProblemType::Algebra);
-        assert_eq!(solver.detect_problem_type("John has 5 apples"), MathProblemType::WordProblem);
-        assert_eq!(solver.detect_problem_type("2x + 5 = 13"), MathProblemType::Equation);
+        assert_eq!(
+            solver.detect_problem_type("What is 2 + 2?"),
+            MathProblemType::Arithmetic
+        );
+        assert_eq!(
+            solver.detect_problem_type("Solve for x"),
+            MathProblemType::Algebra
+        );
+        assert_eq!(
+            solver.detect_problem_type("John has 5 apples"),
+            MathProblemType::WordProblem
+        );
+        assert_eq!(
+            solver.detect_problem_type("2x + 5 = 13"),
+            MathProblemType::Equation
+        );
     }
 }

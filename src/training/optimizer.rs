@@ -82,26 +82,28 @@ impl Optimizer {
         self.step_count += 1;
 
         let state = self.parameter_states.get_mut(param_name).unwrap();
-        
+
         // Bias correction terms
         let bias_correction1 = 1.0 - self.config.beta1.powi(self.step_count as i32);
         let bias_correction2 = 1.0 - self.config.beta2.powi(self.step_count as i32);
 
         for i in 0..parameters.len() {
             let grad = gradients[i];
-            
+
             // Update biased first moment estimate
-            state.momentum[i] = self.config.beta1 * state.momentum[i] + (1.0 - self.config.beta1) * grad;
-            
+            state.momentum[i] =
+                self.config.beta1 * state.momentum[i] + (1.0 - self.config.beta1) * grad;
+
             // Update biased second raw moment estimate
-            state.velocity[i] = self.config.beta2 * state.velocity[i] + (1.0 - self.config.beta2) * grad * grad;
-            
+            state.velocity[i] =
+                self.config.beta2 * state.velocity[i] + (1.0 - self.config.beta2) * grad * grad;
+
             // Compute bias-corrected first moment estimate
             let m_hat = state.momentum[i] / bias_correction1;
-            
+
             // Compute bias-corrected second raw moment estimate
             let v_hat = state.velocity[i] / bias_correction2;
-            
+
             // Update parameters
             let update = self.config.learning_rate * m_hat / (v_hat.sqrt() + self.config.epsilon);
             parameters[i] -= update + self.config.weight_decay * parameters[i];

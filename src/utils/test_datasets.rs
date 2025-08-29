@@ -2,7 +2,9 @@
 //!
 //! Comprehensive test datasets for evaluating reasoning capabilities.
 
-use crate::utils::evaluation::{ReasoningBenchmark, ReasoningProblem, ProblemCategory, DifficultyLevel};
+use crate::utils::evaluation::{
+    DifficultyLevel, ProblemCategory, ReasoningBenchmark, ReasoningProblem,
+};
 
 /// Collection of comprehensive test problem sets
 pub struct TestDatasets;
@@ -361,35 +363,36 @@ impl ReasoningChainExample {
 
         let mut score = 0.0;
         let expected_count = self.expected_reasoning_steps.len() as f32;
-        
+
         // Check for key concepts in reasoning steps
         for expected_step in &self.expected_reasoning_steps {
             let expected_lower = expected_step.to_lowercase();
             let expected_words: Vec<&str> = expected_lower.split_whitespace().collect();
-            
+
             let mut best_match_score: f32 = 0.0;
-            
+
             for actual_step in actual_steps {
                 let actual_lower = actual_step.to_lowercase();
                 let actual_words: Vec<&str> = actual_lower.split_whitespace().collect();
-                
+
                 // Check for exact match first
                 if expected_lower == actual_lower {
                     best_match_score = 1.0;
                     break;
                 }
-                
+
                 // Calculate word overlap
-                let overlap = expected_words.iter()
+                let overlap = expected_words
+                    .iter()
                     .filter(|word| actual_words.contains(word))
                     .count();
-                
+
                 if overlap > 0 {
                     let match_score = (overlap as f32) / (expected_words.len() as f32);
                     best_match_score = best_match_score.max(match_score);
                 }
             }
-            
+
             score += best_match_score;
         }
 
@@ -407,18 +410,24 @@ mod tests {
         assert_eq!(dataset.name, "Comprehensive Mathematics");
         assert!(!dataset.problems.is_empty());
         assert!(dataset.problems.len() >= 10);
-        
+
         // Check that we have problems of different difficulties
-        let easy_count = dataset.problems.iter()
+        let easy_count = dataset
+            .problems
+            .iter()
             .filter(|p| p.difficulty == DifficultyLevel::Easy)
             .count();
-        let medium_count = dataset.problems.iter()
+        let medium_count = dataset
+            .problems
+            .iter()
             .filter(|p| p.difficulty == DifficultyLevel::Medium)
             .count();
-        let hard_count = dataset.problems.iter()
+        let hard_count = dataset
+            .problems
+            .iter()
             .filter(|p| p.difficulty == DifficultyLevel::Hard)
             .count();
-        
+
         assert!(easy_count > 0);
         assert!(medium_count > 0);
         assert!(hard_count > 0);
@@ -429,9 +438,14 @@ mod tests {
         let dataset = TestDatasets::create_code_understanding_dataset();
         assert_eq!(dataset.name, "Code Understanding and Explanation");
         assert!(!dataset.problems.is_empty());
-        
+
         // All problems should be programming category
-        assert!(dataset.problems.iter().all(|p| p.category == ProblemCategory::Programming));
+        assert!(
+            dataset
+                .problems
+                .iter()
+                .all(|p| p.category == ProblemCategory::Programming)
+        );
     }
 
     #[test]
@@ -439,27 +453,32 @@ mod tests {
         let dataset = TestDatasets::create_logical_reasoning_dataset();
         assert_eq!(dataset.name, "Logical Reasoning Problems");
         assert!(!dataset.problems.is_empty());
-        
+
         // All problems should be logic category
-        assert!(dataset.problems.iter().all(|p| p.category == ProblemCategory::Logic));
+        assert!(
+            dataset
+                .problems
+                .iter()
+                .all(|p| p.category == ProblemCategory::Logic)
+        );
     }
 
     #[test]
     fn test_reasoning_chain_validation() {
         let examples = TestDatasets::create_reasoning_chain_dataset();
         assert!(!examples.is_empty());
-        
+
         let example = &examples[0];
-        
+
         // Test perfect match
         let perfect_score = example.validate_reasoning_chain(&example.expected_reasoning_steps);
         assert!(perfect_score > 0.8);
-        
+
         // Test partial match
         let partial_steps = vec!["I need to calculate 15%".to_string()];
         let partial_score = example.validate_reasoning_chain(&partial_steps);
         assert!(partial_score > 0.0 && partial_score < perfect_score);
-        
+
         // Test no match
         let no_match_steps = vec!["Completely unrelated content".to_string()];
         let no_score = example.validate_reasoning_chain(&no_match_steps);
@@ -470,7 +489,7 @@ mod tests {
     fn test_get_all_datasets() {
         let datasets = TestDatasets::get_all_datasets();
         assert_eq!(datasets.len(), 3);
-        
+
         let names: Vec<&str> = datasets.iter().map(|d| d.name.as_str()).collect();
         assert!(names.contains(&"Comprehensive Mathematics"));
         assert!(names.contains(&"Code Understanding and Explanation"));

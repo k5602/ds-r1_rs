@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("-------------------------------");
     let math_problem = "What is the sum of the first 5 positive integers?";
     println!("Problem: {}", math_problem);
-    
+
     match engine.solve_math_problem(math_problem) {
         Ok(result) => {
             println!("Reasoning steps: {}", result.reasoning_steps);
@@ -46,7 +46,7 @@ fn fibonacci(n: u32) -> u32 {
 }
 "#;
     println!("Code to explain:\n{}", code_sample);
-    
+
     match engine.explain_code(code_sample) {
         Ok(result) => {
             println!("Reasoning steps: {}", result.reasoning_steps);
@@ -58,9 +58,10 @@ fn fibonacci(n: u32) -> u32 {
 
     println!("3. Logical Reasoning");
     println!("--------------------");
-    let logic_problem = "If all cats are mammals, and Fluffy is a cat, what can we conclude about Fluffy?";
+    let logic_problem =
+        "If all cats are mammals, and Fluffy is a cat, what can we conclude about Fluffy?";
     println!("Problem: {}", logic_problem);
-    
+
     match engine.solve_logical_problem(logic_problem) {
         Ok(result) => {
             println!("Reasoning steps: {}", result.reasoning_steps);
@@ -74,7 +75,7 @@ fn fibonacci(n: u32) -> u32 {
     println!("--------------------------");
     let general_problem = "How would you organize a small library of 1000 books?";
     println!("Problem: {}", general_problem);
-    
+
     match engine.solve_problem(general_problem, ProblemType::General) {
         Ok(result) => {
             println!("Reasoning steps: {}", result.reasoning_steps);
@@ -88,7 +89,7 @@ fn fibonacci(n: u32) -> u32 {
     println!("-----------------------------------");
     let reasoning_prompt = "Explain why the sky appears blue during the day.";
     println!("Prompt: {}", reasoning_prompt);
-    
+
     match engine.generate_with_reasoning(reasoning_prompt) {
         Ok(result) => {
             println!("Thinking process:");
@@ -104,6 +105,6 @@ fn fibonacci(n: u32) -> u32 {
     println!("Demo completed!");
     println!("\nNote: This demo shows the reasoning interface structure.");
     println!("Actual reasoning will work once the transformer model is fully implemented.");
-    
+
     Ok(())
 }
