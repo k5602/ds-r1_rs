@@ -13,9 +13,9 @@ File format (pretty JSON):
   "version": 1,
   "created_at": "2025-08-28T12:34:56.789Z",
   "params": [
-    { "name": "embeddings.weight[0]", "len": 512, "data": [ ...512 floats... ] },
+    { "name": "embeddings.weight\[0]", "len": 512, "data": [ ...512 floats... ] },
     ...
-    { "name": "lm_head.weight[0]", "len": 512, "data": [ ...512 floats... ] },
+    { "name": "lm_head.weight\[0]", "len": 512, "data": [ ...512 floats... ] },
     ...
     { "name": "lm_head.bias", "len": 32000, "data": [ ...32000 floats... ] }
   ]

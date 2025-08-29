@@ -61,7 +61,7 @@ impl LoRACompression {
         Ok(normalized)
     }
 
-    /// Decompress input: [compressed_dim] -> [hidden_size]
+    /// Decompress input: \[compressed_dim] -> \[hidden_size]
     pub fn decompress(&self, compressed: &[f32]) -> Result<Vec<f32>> {
         if compressed.len() != self.compressed_dim {
             return Err(ModelError::Forward(format!(
@@ -630,22 +630,22 @@ impl Linear {
 
         Ok(output)
     }
-    /// Get a reference to the weight matrix [out_features][in_features]
+    /// Get a reference to the weight matrix \[out_features]\[in_features]
     pub fn weights(&self) -> &Vec<Vec<f32>> {
         &self.weights
     }
 
-    /// Get a mutable reference to the weight matrix [out_features][in_features]
+    /// Get a mutable reference to the weight matrix \[out_features]\[in_features]
     pub fn weights_mut(&mut self) -> &mut Vec<Vec<f32>> {
         &mut self.weights
     }
 
-    /// Get a reference to the bias vector [out_features]
+    /// Get a reference to the bias vector \[out_features]
     pub fn bias(&self) -> &Vec<f32> {
         &self.bias
     }
 
-    /// Get a mutable reference to the bias vector [out_features]
+    /// Get a mutable reference to the bias vector \[out_features]
     pub fn bias_mut(&mut self) -> &mut Vec<f32> {
         &mut self.bias
     }
@@ -871,9 +871,9 @@ impl StandardAttention {
     }
 
     /// Incremental decoding step with per-head KV cache.
-    /// - x_t: current token hidden input [hidden_size]
+    /// - x_t: current token hidden input \[hidden_size]
     /// - position: zero-based position in the sequence (should equal current cache length)
-    /// Returns: concatenated per-head context projected back to the hidden space; a Vec<f32> of length hidden_size for this token position.
+    ///   Returns: concatenated per-head context projected back to the hidden space; a `Vec<f32>` of length hidden_size for this token position.
     pub fn forward_next(
         &self,
         cache: &mut StandardAttentionCache,

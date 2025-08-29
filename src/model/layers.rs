@@ -591,7 +591,7 @@ impl FeedForward {
     }
 
     /// Forward pass through feed-forward layer
-    /// Input: [hidden_size], Output: [hidden_size]
+    /// Input: \[hidden_size], Output: \[hidden_size]
     pub fn forward(&self, input: &[f32]) -> Result<Vec<f32>> {
         self.forward_with_training(input, false)
     }
@@ -697,7 +697,7 @@ impl LayerNorm {
     }
 
     /// Forward pass through layer normalization
-    /// Input: [hidden_size], Output: [hidden_size]
+    /// Input: \[hidden_size], Output: \[hidden_size]
     pub fn forward(&self, input: &[f32]) -> Result<Vec<f32>> {
         if input.len() != self.hidden_size {
             return Err(ModelError::Forward(format!(

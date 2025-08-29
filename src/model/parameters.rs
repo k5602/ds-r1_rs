@@ -8,15 +8,15 @@ types that make it easy to expose, traverse, and mutate model parameters
 Goals
 - Stable parameter naming for optimizer state and checkpointing
 - Borrow-safe mutable traversal over parameter buffers
-- Utilities to collect parameters from common containers (Vec<f32>, Vec<Vec<f32>>)
+- Utilities to collect parameters from common containers (`Vec<f32>`, `Vec<Vec<f32>>`)
 - Type-safe helpers (ParameterRef/ParameterMut) instead of requiring trait objects
 
 Typical usage in a model:
-- Expose parameters via `parameters_mut()` (returns Vec<ParameterMut>)
+- Expose parameters via `parameters_mut()` (returns `Vec<ParameterMut>`)
 - Or provide a convenience iterator `for_each_parameter(|name, slice| { ... })`
 - Use stable names like:
-  - "embeddings.weight[<row>]"
-  - "lm_head.weight[<row>]"
+  - "embeddings.weight[`<row>`]"
+  - "lm_head.weight[`<row>`]"
   - "lm_head.bias"
 */
 
@@ -232,12 +232,12 @@ impl<'a> ParameterRegistryMut<'a> {
 
 /// Convenience helpers to collect parameters from common containers.
 ///
-/// Create a single immutable parameter reference from a Vec<f32>.
+/// Create a single immutable parameter reference from a `Vec<f32>`.
 pub fn single_ref<'a, N: Into<String>>(name: N, v: &'a Vec<f32>) -> ParameterRef<'a> {
     ParameterRef::new(name, v.as_slice())
 }
 
-/// Create a single mutable parameter reference from a Vec<f32>.
+/// Create a single mutable parameter reference from a `Vec<f32>`.
 pub fn single_mut<'a, N: Into<String>>(name: N, v: &'a mut Vec<f32>) -> ParameterMut<'a> {
     ParameterMut::new(name, v.as_mut_slice())
 }

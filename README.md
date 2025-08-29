@@ -16,7 +16,7 @@ Highlights:
 - Reasoning-aware generation pipeline with <think>…</think> parsing and structured analysis
 - Evaluation harness for benchmarks across math, logic, programming, and general reasoning
 - Examples that compile and run via cargo
-- GitHub Actions CI with build, lint, test, examples, and coverage
+- GitHub Actions CI with fmt, clippy, build, unit + integration tests, benchmarks (artifacts), and docs publishing
 
 ## 🚀 Quick Start
 
@@ -237,7 +237,7 @@ Tip:
   - Basic supervised training scaffold (cross-entropy)
   - RL training scaffold (REINFORCE with a simple reward function)
 - Utilities
-  - Tokenizer (simple, prototype), math helpers, error handling (thiserror)
+  - Tokenizer powered by tiktoken-rs (BPE), math helpers, error handling (thiserror)
 - Engineering
   - Unit tests across modules
   - CI (fmt, clippy, build, test, run examples, coverage with tarpaulin)
@@ -321,8 +321,8 @@ This prototype uses special thinking tokens and a reasoning state machine to par
   - Embeddings → N × TransformerLayer → FinalNorm → LM Head
   - Standard attention uses RoPE and causal masking.
   - Output shape is flattened `[seq_len * vocab_size]` for simple integration with training and demos.
-- MLA and MoE are fully implemented & unit-tested as components. The main transformer currently uses StandardAttention. Integrating MLA/MoE at scale is left as a roadmap task (see below).
-- Generation includes sampling strategies (greedy, temperature, top-k). KV-cache is a placeholder for future optimization.
+- MLA and MoE are integrated into the Transformer stack via config toggles (Standard|MLA attention, Dense|MoE FFN), with support for mixed-depth patterns (e.g., periodic MLA/MoE) and telemetry (compression, routing).
+- Generation includes sampling strategies (greedy, temperature, top-k) and incremental decoding with a per-layer KV cache; tokens/sec is reported in CLI and evaluation.
 - Training code is intentionally conservative—scaffolding and examples demonstrate APIs, not production SGD for large checkpoints.
 
 ## 🔬 Benchmarks & Evaluation
@@ -349,32 +349,31 @@ Metrics reported:
 
 ## 🧭 Roadmap
 
-- Architecture
-  - Integrate MLA and MoE into the core transformer stack (selective layer replacement)
-  - Add residual/adapter configurations for MLA pathways
-  - KV cache for fast autoregressive decoding
-  - Configurable layer dropouts, norms, and activation variants
+What’s next (post v0.1)
+
 - Inference
-  - True streaming token-by-token callback
-  - Beam search, top-p sampling
+  - True streaming token-by-token callbacks
+  - Beam search, top-p sampling, and repetition penalty with full history
+- Architecture
+  - Additional telemetry for MLA compression and MoE routing balance
+  - Configurable dropouts, norms, activations; adapter/residual options for MLA paths
 - Training
-  - Proper parameter registry and gradient updates across actual model weights
-  - Mixed precision, sharding, and large-batch pipelines
-- Tooling
-  - Load/save checkpoints (weights), export formats
-  - More robust tokenizer (BPE/WordPiece)
+  - Extend backward pass beyond LM head/embeddings; broader parameter updates
+  - Mixed precision and larger-batch experiments
 - Evaluation
-  - Richer metrics (exact-match, numeric tolerance for math)
-  - Pluggable benchmarks and custom result reporters
+  - Exact-match datasets and code execution-based tasks
+  - Richer telemetry and standardized result schemas
+- Tooling
+  - More integration tests and benchmark coverage
 
 ## 🧰 CI/CD
 
 GitHub Actions workflow runs on PRs and main:
 
-- rustfmt, clippy (-D warnings)
-- build + test all targets
-- run all examples
-- coverage report via tarpaulin (uploaded as artifact)
+- rustfmt, clippy (CI runs warn-only; locally recommend -D warnings)
+- build + unit and integration tests
+- run examples and Criterion benchmarks (artifacts uploaded)
+- coverage via tarpaulin (artifacts) and docs published (docs.rs per release, GitHub Pages via workflow)
 
 ## 🤝 Contributing
 

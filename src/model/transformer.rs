@@ -319,7 +319,7 @@ impl DeepSeekR1Model {
         infos
     }
 
-    /// Immutable view of LM head weight matrix: [vocab_size][hidden_size]
+    /// Immutable view of LM head weight matrix: \[vocab_size]\[hidden_size]
     pub fn lm_head_weights(&self) -> &Vec<Vec<f32>> {
         &self.lm_head.weights
     }

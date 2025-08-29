@@ -174,7 +174,7 @@ impl Tokenizer {
     }
 
     /// Encode text to token IDs (prepends BOS and appends EOS).
-    /// - Recognizes custom specials (<bos>, <eos>, <pad>, <unk>, <think>, </think>) literally.
+    /// - Recognizes custom specials (`<bos>`, `<eos>`, `<pad>`, `<unk>`, `<think>`, `</think>`) literally.
     /// - Uses BPE piece IDs when rank fits into mapped range.
     pub fn encode(&self, text: &str) -> Result<Vec<u32>> {
         let mut out: Vec<u32> = Vec::new();
