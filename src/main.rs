@@ -407,11 +407,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Build model config (optionally tiny for artifact demo)
             let mut config = ModelConfig::default();
             if demo_small {
-                config.vocab_size = 256;
+                config.vocab_size = 512; // Minimum 263 required (6 specials + 256 byte tokens + 1+ BPE)
                 config.hidden_size = 64; // divisible by default num_heads=8
                 config.num_layers = 2;
                 config.intermediate_size = 256;
-                config.max_seq_len = 128;
+                config.max_seq_len = 256; // Allow for proper generation with some buffer
             }
 
             let mut model = DeepSeekR1Model::new(config)?;
@@ -493,11 +493,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Build model config (optionally tiny if artifact was saved with demo-small)
             let mut config = ModelConfig::default();
             if demo_small {
-                config.vocab_size = 256;
+                config.vocab_size = 512; // Minimum 263 required (6 specials + 256 byte tokens + 1+ BPE)
                 config.hidden_size = 64;
                 config.num_layers = 2;
                 config.intermediate_size = 256;
-                config.max_seq_len = 128;
+                config.max_seq_len = 256; // Allow for proper generation with some buffer
             }
 
             let mut model = DeepSeekR1Model::new(config.clone())?;
@@ -520,6 +520,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let mut engine = InferenceEngine::new(model)?;
                         let mut cfg = engine.generation_config().clone();
                         cfg.temperature = 0.0; // greedy sampling for determinism
+                        if demo_small {
+                            cfg.max_tokens = 32; // Limit generation for demo-small to fit in max_seq_len
+                        }
                         match engine.generate_text_with_config(&prompt, &cfg) {
                             Ok(output) => {
                                 println!("Generated (deterministic):");

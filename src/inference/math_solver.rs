@@ -617,6 +617,15 @@ impl MathProblemSolver {
             operation = self.infer_operation_from_context(&lower_problem);
         }
 
+        // Handle phrasing "subtract X from Y" => interpret as Y - X
+        if operation == "-"
+            && lower_problem.contains("subtract")
+            && lower_problem.contains(" from ")
+            && numbers.len() >= 2
+        {
+            numbers.swap(0, 1);
+        }
+
         Ok((numbers, operation))
     }
 
@@ -913,11 +922,11 @@ impl MathProblemSolver {
                 }
                 // Handle coefficient*x = value
                 else if let Some(coeff_str) = left.strip_suffix('x') {
-                    if let Ok(coefficient) = coeff_str.parse::<f64>() {
-                        if coefficient != 0.0 {
-                            let x_value = right_val / coefficient;
-                            return Ok(format!("x = {}", x_value));
-                        }
+                    if let Ok(coefficient) = coeff_str.parse::<f64>()
+                        && coefficient != 0.0
+                    {
+                        let x_value = right_val / coefficient;
+                        return Ok(format!("x = {}", x_value));
                     }
                 }
                 // Handle coefficient*x + constant = value
@@ -928,11 +937,10 @@ impl MathProblemSolver {
 
                         if let (Ok(coefficient), Ok(constant)) =
                             (coeff_str.parse::<f64>(), const_str.parse::<f64>())
+                            && coefficient != 0.0
                         {
-                            if coefficient != 0.0 {
-                                let x_value = (right_val - constant) / coefficient;
-                                return Ok(format!("x = {}", x_value));
-                            }
+                            let x_value = (right_val - constant) / coefficient;
+                            return Ok(format!("x = {}", x_value));
                         }
                     }
                 }
@@ -1074,51 +1082,50 @@ impl MathProblemSolver {
         // Try to evaluate actual mathematical expressions
         if expression.contains('+') {
             let parts: Vec<&str> = expression.split('+').collect();
-            if parts.len() == 2 {
-                if let (Ok(a), Ok(b)) = (
+            if parts.len() == 2
+                && let (Ok(a), Ok(b)) = (
                     parts[0].trim().parse::<f64>(),
                     parts[1].trim().parse::<f64>(),
-                ) {
-                    return Ok(a + b);
-                }
+                )
+            {
+                return Ok(a + b);
             }
         }
 
         if expression.contains('-') {
             let parts: Vec<&str> = expression.split('-').collect();
-            if parts.len() == 2 {
-                if let (Ok(a), Ok(b)) = (
+            if parts.len() == 2
+                && let (Ok(a), Ok(b)) = (
                     parts[0].trim().parse::<f64>(),
                     parts[1].trim().parse::<f64>(),
-                ) {
-                    return Ok(a - b);
-                }
+                )
+            {
+                return Ok(a - b);
             }
         }
 
         if expression.contains('×') {
             let parts: Vec<&str> = expression.split('×').collect();
-            if parts.len() == 2 {
-                if let (Ok(a), Ok(b)) = (
+            if parts.len() == 2
+                && let (Ok(a), Ok(b)) = (
                     parts[0].trim().parse::<f64>(),
                     parts[1].trim().parse::<f64>(),
-                ) {
-                    return Ok(a * b);
-                }
+                )
+            {
+                return Ok(a * b);
             }
         }
 
         if expression.contains('÷') {
             let parts: Vec<&str> = expression.split('÷').collect();
-            if parts.len() == 2 {
-                if let (Ok(a), Ok(b)) = (
+            if parts.len() == 2
+                && let (Ok(a), Ok(b)) = (
                     parts[0].trim().parse::<f64>(),
                     parts[1].trim().parse::<f64>(),
-                ) {
-                    if b != 0.0 {
-                        return Ok(a / b);
-                    }
-                }
+                )
+                && b != 0.0
+            {
+                return Ok(a / b);
             }
         }
 

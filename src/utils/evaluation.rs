@@ -70,51 +70,8 @@ impl ReasoningMetrics {
         let expected_clean = expected.trim().to_lowercase();
         let actual_clean = actual.trim().to_lowercase();
 
-        // 1) Numeric tolerance (preferred for math-like answers)
-        // Try to extract the first numeric value from both strings and compare with tolerance.
-        let extract_number = |s: &str| -> Option<f64> {
-            let bytes = s.as_bytes();
-            let mut i = 0usize;
-            while i < bytes.len() {
-                let c = bytes[i] as char;
-                // Potential start of a number
-                if c.is_ascii_digit() || c == '.' || c == '-' || c == '+' {
-                    let mut j = i;
-                    let mut has_digit = false;
-                    while j < bytes.len() {
-                        let cj = bytes[j] as char;
-                        if cj.is_ascii_digit() {
-                            has_digit = true;
-                        }
-                        if cj.is_ascii_digit()
-                            || cj == '.'
-                            || cj == 'e'
-                            || cj == 'E'
-                            || cj == '-'
-                            || cj == '+'
-                        {
-                            j += 1;
-                        } else {
-                            break;
-                        }
-                    }
-                    if has_digit {
-                        if let Ok(val) = s[i..j].parse::<f64>() {
-                            return Some(val);
-                        }
-                    }
-                    i = j;
-                } else {
-                    i += 1;
-                }
-            }
-            None
-        };
-
-        if let (Some(a), Some(b)) = (
-            extract_number(&expected_clean),
-            extract_number(&actual_clean),
-        ) {
+        // 1) Numeric tolerance only when both strings are pure numbers
+        if let (Ok(a), Ok(b)) = (expected_clean.parse::<f64>(), actual_clean.parse::<f64>()) {
             let abs_diff = (a - b).abs();
             let abs_tol = 1e-4f64;
             let rel_tol = 1e-3f64;

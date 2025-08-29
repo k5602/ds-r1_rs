@@ -23,11 +23,13 @@ pub enum FfImpl {
 }
 
 /// Builder toggles for constructing layers
+#[derive(Debug, PartialEq, Clone)]
 pub enum AttentionKind {
     Standard,
     MLA,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum FeedForwardKind {
     Dense,
     MoE,

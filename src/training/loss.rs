@@ -208,8 +208,8 @@ mod tests {
     fn test_loss_with_mismatched_sizes() {
         let loss = CrossEntropyLoss::new();
 
-        let predictions = vec![1.0, 2.0];
-        let targets = vec![0.0];
+        let predictions = vec![1.0, 2.0, 3.0];
+        let targets = vec![0.0, 1.0];
 
         let result = loss.compute_loss(&predictions, &targets);
         assert!(result.is_err());
