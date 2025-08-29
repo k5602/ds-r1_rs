@@ -513,7 +513,7 @@ mod tests {
         let mut model = DeepSeekR1Model::new(config.clone()).unwrap();
 
         // Short deterministic prefix (within vocab bounds)
-        let input_ids = vec![1u32, 2u32, 3u32, 4u32];
+        let input_ids = [1u32, 2u32, 3u32, 4u32];
 
         // Compare at several prefix lengths
         for i in 0..input_ids.len() {
@@ -568,7 +568,7 @@ mod tests {
         let config = ModelConfig::default();
         let mut model = DeepSeekR1Model::new(config.clone()).unwrap();
 
-        let seq = vec![10u32, 20u32, 30u32, 40u32, 50u32];
+        let seq = [10u32, 20u32, 30u32, 40u32, 50u32];
         let mut cache = super::ModelKVCache::new(&model);
 
         // Initially empty
