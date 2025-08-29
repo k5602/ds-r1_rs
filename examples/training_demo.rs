@@ -4,8 +4,8 @@
 
 use ds_r1_rs::model::{DeepSeekR1Model, ModelConfig};
 use ds_r1_rs::training::{
-    BasicTrainer, DataLoader, OptimizerConfig, RLTrainer, SyntheticDataGenerator,
-    TrainingBatch, TrainingExample,
+    BasicTrainer, DataLoader, OptimizerConfig, RLTrainer, SyntheticDataGenerator, TrainingBatch,
+    TrainingExample,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

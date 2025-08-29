@@ -3,10 +3,7 @@
 //! Demonstrates structured mathematical reasoning and problem solving capabilities.
 
 use ds_r1_rs::{
-    inference::{
-        engine::InferenceEngine,
-        math_solver::MathProblemSolver,
-    },
+    inference::{engine::InferenceEngine, math_solver::MathProblemSolver},
     model::{config::ModelConfig, transformer::DeepSeekR1Model},
 };
 
@@ -49,10 +46,12 @@ fn demonstrate_arithmetic_problems(
     println!("1. Arithmetic Problems");
     println!("----------------------");
 
-    let arithmetic_problems = ["What is 15 + 27?",
+    let arithmetic_problems = [
+        "What is 15 + 27?",
         "Calculate 84 - 39",
         "What is 12 times 8?",
-        "Divide 144 by 12"];
+        "Divide 144 by 12",
+    ];
 
     for (i, problem) in arithmetic_problems.iter().enumerate() {
         println!("Problem {}: {}", i + 1, problem);
@@ -90,10 +89,12 @@ fn demonstrate_algebraic_problems(
     println!("2. Algebraic Problems");
     println!("---------------------");
 
-    let algebra_problems = ["Find the value of x when 2x + 5 = 13",
+    let algebra_problems = [
+        "Find the value of x when 2x + 5 = 13",
         "Solve for x: x + 3 = 7",
         "What is x if 3x = 15?",
-        "Find x when x - 4 = 10"];
+        "Find x when x - 4 = 10",
+    ];
 
     for (i, problem) in algebra_problems.iter().enumerate() {
         println!("Problem {}: {}", i + 1, problem);
@@ -134,10 +135,12 @@ fn demonstrate_word_problems(
     println!("3. Word Problems");
     println!("----------------");
 
-    let word_problems = ["John has 15 apples and Mary has 23 apples. How many apples do they have in total?",
+    let word_problems = [
+        "John has 15 apples and Mary has 23 apples. How many apples do they have in total?",
         "A store sold 45 items in the morning and 38 items in the afternoon. What is the total number of items sold?",
         "Sarah bought 8 books and each book costs 12 dollars. How much did she spend in total?",
-        "There are 100 students in a school. If 35 are boys, how many are girls?"];
+        "There are 100 students in a school. If 35 are boys, how many are girls?",
+    ];
 
     for (i, problem) in word_problems.iter().enumerate() {
         println!("Problem {}: {}", i + 1, problem);
@@ -175,10 +178,12 @@ fn demonstrate_equation_solving(
     println!("4. Equation Solving");
     println!("-------------------");
 
-    let equation_problems = ["Solve: 2x + 5 = 13",
+    let equation_problems = [
+        "Solve: 2x + 5 = 13",
         "Find x: x + 3 = 7",
         "Solve: 3x = 15",
-        "Find the value: 4x - 8 = 12"];
+        "Find the value: 4x - 8 = 12",
+    ];
 
     for (i, problem) in equation_problems.iter().enumerate() {
         println!("Problem {}: {}", i + 1, problem);
@@ -216,10 +221,12 @@ fn demonstrate_inference_engine_integration(
     println!("5. Inference Engine Integration");
     println!("-------------------------------");
 
-    let math_problems = ["What is 25% of 80?",
+    let math_problems = [
+        "What is 25% of 80?",
         "If a rectangle has length 12 and width 8, what is its area?",
         "Calculate the average of 15, 20, 25, and 30",
-        "What is the perimeter of a square with side length 7?"];
+        "What is the perimeter of a square with side length 7?",
+    ];
 
     for (i, problem) in math_problems.iter().enumerate() {
         println!("Problem {}: {}", i + 1, problem);
