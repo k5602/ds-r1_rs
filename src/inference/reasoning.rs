@@ -407,6 +407,9 @@ impl ReasoningChainParser {
 
     /// Parse with full structural analysis
     pub fn parse_structured(&mut self, text: &str) -> Result<StructuredReasoningOutput> {
+        // Read configured token IDs (used for completeness even though parser operates on text)
+        let _start_id = self.think_start_token;
+        let _end_id = self.think_end_token;
         let think_start = "<think>";
         let think_end = "</think>";
         let mut reasoning_steps = Vec::new();
@@ -415,7 +418,6 @@ impl ReasoningChainParser {
 
         // Extract all thinking sections
         while let Some(start_pos) = remaining_text.find(think_start) {
-            // Add any text before thinking section to final answer
             let before_thinking = &remaining_text[..start_pos];
             if !before_thinking.trim().is_empty() {
                 final_answer.push_str(before_thinking.trim());

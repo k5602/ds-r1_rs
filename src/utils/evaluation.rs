@@ -70,12 +70,67 @@ impl ReasoningMetrics {
         let expected_clean = expected.trim().to_lowercase();
         let actual_clean = actual.trim().to_lowercase();
 
+        // 1) Numeric tolerance (preferred for math-like answers)
+        // Try to extract the first numeric value from both strings and compare with tolerance.
+        let extract_number = |s: &str| -> Option<f64> {
+            let bytes = s.as_bytes();
+            let mut i = 0usize;
+            while i < bytes.len() {
+                let c = bytes[i] as char;
+                // Potential start of a number
+                if c.is_ascii_digit() || c == '.' || c == '-' || c == '+' {
+                    let mut j = i;
+                    let mut has_digit = false;
+                    while j < bytes.len() {
+                        let cj = bytes[j] as char;
+                        if cj.is_ascii_digit() {
+                            has_digit = true;
+                        }
+                        if cj.is_ascii_digit()
+                            || cj == '.'
+                            || cj == 'e'
+                            || cj == 'E'
+                            || cj == '-'
+                            || cj == '+'
+                        {
+                            j += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    if has_digit {
+                        if let Ok(val) = s[i..j].parse::<f64>() {
+                            return Some(val);
+                        }
+                    }
+                    i = j;
+                } else {
+                    i += 1;
+                }
+            }
+            None
+        };
+
+        if let (Some(a), Some(b)) = (
+            extract_number(&expected_clean),
+            extract_number(&actual_clean),
+        ) {
+            let abs_diff = (a - b).abs();
+            let abs_tol = 1e-4f64;
+            let rel_tol = 1e-3f64;
+            let tol = abs_tol.max(rel_tol * a.abs().max(b.abs()));
+            if abs_diff <= tol {
+                return 1.0;
+            }
+        }
+
+        // 2) Exact or containment match
         if expected_clean == actual_clean {
             1.0
         } else if actual_clean.contains(&expected_clean) || expected_clean.contains(&actual_clean) {
             0.7
         } else {
-            // Simple word overlap metric
+            // 3) Simple word-overlap fallback
             let expected_words: std::collections::HashSet<&str> =
                 expected_clean.split_whitespace().collect();
             let actual_words: std::collections::HashSet<&str> =
@@ -302,7 +357,12 @@ impl EvaluationHarness {
 
         for (i, problem) in benchmark.problems.iter().enumerate() {
             if self.detailed_logging {
-                log::debug!("Evaluating problem {}/{}: {}", i + 1, benchmark.problems.len(), problem.id);
+                log::debug!(
+                    "Evaluating problem {}/{}: {}",
+                    i + 1,
+                    benchmark.problems.len(),
+                    problem.id
+                );
             }
 
             let problem_start = Instant::now();
@@ -313,12 +373,18 @@ impl EvaluationHarness {
                     problem_times.push(execution_time);
 
                     // Count tokens (simplified estimation)
-                    let answer_tokens = output.reasoning_output.final_answer.split_whitespace().count();
-                    let thinking_tokens: usize = output.reasoning_output.thinking_chain
+                    let answer_tokens = output
+                        .reasoning_output
+                        .final_answer
+                        .split_whitespace()
+                        .count();
+                    let thinking_tokens: usize = output
+                        .reasoning_output
+                        .thinking_chain
                         .iter()
                         .map(|s| s.split_whitespace().count())
                         .sum();
-                    
+
                     total_tokens += answer_tokens + thinking_tokens;
                     total_thinking_tokens += thinking_tokens;
 
@@ -388,16 +454,19 @@ impl EvaluationHarness {
 
         let average_metrics = self.calculate_average_metrics(&detailed_results);
         let category_breakdown = self.calculate_category_breakdown(benchmark, &detailed_results);
-        let difficulty_breakdown = self.calculate_difficulty_breakdown(benchmark, &detailed_results);
+        let difficulty_breakdown =
+            self.calculate_difficulty_breakdown(benchmark, &detailed_results);
 
         if self.detailed_logging {
-            log::info!("Evaluation completed. Accuracy: {}/{} ({:.1}%)", 
-                solved_correctly, 
+            log::info!(
+                "Evaluation completed. Accuracy: {}/{} ({:.1}%)",
+                solved_correctly,
                 benchmark.problems.len(),
                 (solved_correctly as f32 / benchmark.problems.len() as f32) * 100.0
             );
-            log::info!("Total time: {:?}, Avg time per problem: {:?}", 
-                total_time, 
+            log::info!(
+                "Total time: {:?}, Avg time per problem: {:?}",
+                total_time,
                 performance_metrics.avg_time_per_problem
             );
         }
@@ -421,10 +490,26 @@ impl EvaluationHarness {
         }
 
         let total = results.len() as f32;
-        let avg_accuracy = results.iter().map(|r| r.reasoning_metrics.accuracy).sum::<f32>() / total;
-        let avg_depth = results.iter().map(|r| r.reasoning_metrics.reasoning_depth).sum::<f32>() / total;
-        let avg_clarity = results.iter().map(|r| r.reasoning_metrics.step_clarity).sum::<f32>() / total;
-        let avg_verification = results.iter().map(|r| r.reasoning_metrics.verification_presence).sum::<f32>() / total;
+        let avg_accuracy = results
+            .iter()
+            .map(|r| r.reasoning_metrics.accuracy)
+            .sum::<f32>()
+            / total;
+        let avg_depth = results
+            .iter()
+            .map(|r| r.reasoning_metrics.reasoning_depth)
+            .sum::<f32>()
+            / total;
+        let avg_clarity = results
+            .iter()
+            .map(|r| r.reasoning_metrics.step_clarity)
+            .sum::<f32>()
+            / total;
+        let avg_verification = results
+            .iter()
+            .map(|r| r.reasoning_metrics.verification_presence)
+            .sum::<f32>()
+            / total;
 
         ReasoningMetrics::new(avg_accuracy, avg_depth, avg_clarity, avg_verification)
     }
@@ -450,9 +535,11 @@ impl EvaluationHarness {
                 let total = results.len();
                 let correct = results.iter().filter(|r| r.is_correct).count();
                 let accuracy = correct as f32 / total as f32;
-                let avg_quality = results.iter()
+                let avg_quality = results
+                    .iter()
                     .map(|r| r.reasoning_metrics.overall_quality)
-                    .sum::<f32>() / total as f32;
+                    .sum::<f32>()
+                    / total as f32;
 
                 (
                     category,
@@ -488,10 +575,15 @@ impl EvaluationHarness {
                 let total = results.len();
                 let correct = results.iter().filter(|r| r.is_correct).count();
                 let accuracy = correct as f32 / total as f32;
-                let avg_quality = results.iter()
+                let avg_quality = results
+                    .iter()
                     .map(|r| r.reasoning_metrics.overall_quality)
-                    .sum::<f32>() / total as f32;
-                let total_nanos = results.iter().map(|r| r.execution_time.as_nanos()).sum::<u128>();
+                    .sum::<f32>()
+                    / total as f32;
+                let total_nanos = results
+                    .iter()
+                    .map(|r| r.execution_time.as_nanos())
+                    .sum::<u128>();
                 let avg_time = Duration::from_nanos((total_nanos / total as u128) as u64);
 
                 (
@@ -525,7 +617,8 @@ impl EvaluationHarness {
     where
         F: FnMut(&str) -> Result<StructuredReasoningOutput>,
     {
-        let benchmark_names: Vec<String> = self.get_benchmarks()
+        let benchmark_names: Vec<String> = self
+            .get_benchmarks()
             .iter()
             .map(|b| b.name.clone())
             .collect();
@@ -537,6 +630,28 @@ impl EvaluationHarness {
         }
 
         Ok(all_results)
+    }
+
+    /// Export a single benchmark's results to pretty JSON
+    pub fn evaluate_comprehensive_json<F>(
+        &self,
+        benchmark_name: &str,
+        mut inference_fn: F,
+    ) -> Result<String>
+    where
+        F: FnMut(&str) -> Result<StructuredReasoningOutput>,
+    {
+        let results = self.evaluate_comprehensive(benchmark_name, &mut inference_fn)?;
+        serde_json::to_string_pretty(&results).map_err(ModelError::Json)
+    }
+
+    /// Evaluate all benchmarks and export as pretty JSON array
+    pub fn evaluate_all_json<F>(&self, mut inference_fn: F) -> Result<String>
+    where
+        F: FnMut(&str) -> Result<StructuredReasoningOutput>,
+    {
+        let results = self.evaluate_all(&mut inference_fn)?;
+        serde_json::to_string_pretty(&results).map_err(ModelError::Json)
     }
 }
 
@@ -682,13 +797,7 @@ impl ReasoningEvaluator {
             total_problems: benchmark.problems.len(),
             solved_correctly,
             average_metrics,
-            performance_metrics: PerformanceMetrics::new(
-                Duration::from_secs(0),
-                &[],
-                0.0,
-                0,
-                0,
-            ), // Placeholder for old method
+            performance_metrics: PerformanceMetrics::new(Duration::from_secs(0), &[], 0.0, 0, 0), // Placeholder for old method
             category_breakdown,
             difficulty_breakdown,
             detailed_results: Vec::new(), // Placeholder for old method
@@ -729,7 +838,7 @@ impl ReasoningEvaluator {
                     category: ProblemCategory::Mathematics,
                     difficulty: DifficultyLevel::Easy,
                 },
-                
+
                 // Algebra - Medium
                 ReasoningProblem {
                     id: "math_005".to_string(),
@@ -752,7 +861,7 @@ impl ReasoningEvaluator {
                     category: ProblemCategory::Mathematics,
                     difficulty: DifficultyLevel::Medium,
                 },
-                
+
                 // Word Problems - Medium to Hard
                 ReasoningProblem {
                     id: "math_008".to_string(),
@@ -806,7 +915,7 @@ impl ReasoningEvaluator {
                     category: ProblemCategory::Logic,
                     difficulty: DifficultyLevel::Easy,
                 },
-                
+
                 // Conditional Logic - Medium
                 ReasoningProblem {
                     id: "logic_004".to_string(),
@@ -829,7 +938,7 @@ impl ReasoningEvaluator {
                     category: ProblemCategory::Logic,
                     difficulty: DifficultyLevel::Medium,
                 },
-                
+
                 // Complex Logic - Hard
                 ReasoningProblem {
                     id: "logic_007".to_string(),
@@ -914,7 +1023,8 @@ impl ReasoningEvaluator {
                 },
                 ReasoningProblem {
                     id: "gen_002".to_string(),
-                    problem_text: "A farmer has 17 sheep. All but 9 die. How many are left?".to_string(),
+                    problem_text: "A farmer has 17 sheep. All but 9 die. How many are left?"
+                        .to_string(),
                     expected_answer: "9".to_string(),
                     category: ProblemCategory::General,
                     difficulty: DifficultyLevel::Medium,
@@ -1013,5 +1123,22 @@ mod tests {
 
         assert_eq!(problem.category, ProblemCategory::Mathematics);
         assert_eq!(problem.difficulty, DifficultyLevel::Easy);
+    }
+
+    #[test]
+    fn test_numeric_tolerance_accuracy() {
+        // Exact numeric with formatting differences
+        assert_eq!(
+            ReasoningMetrics::calculate_answer_accuracy("3.14", "3.1400"),
+            1.0
+        );
+
+        // Within small absolute tolerance
+        let acc = ReasoningMetrics::calculate_answer_accuracy("1000", "1000.00009");
+        assert!(acc >= 1.0 - 1e-6);
+
+        // Outside tolerance should not be full credit
+        let acc2 = ReasoningMetrics::calculate_answer_accuracy("2.0", "2.5");
+        assert!(acc2 < 1.0);
     }
 }

@@ -13,7 +13,6 @@ struct TrainableEmbedding {
     weights: Vec<Vec<f32>>,
     vocab_size: usize,
     hidden_size: usize,
-    dropout_prob: f32,
 }
 
 impl TrainableEmbedding {
@@ -44,7 +43,6 @@ impl TrainableEmbedding {
             weights,
             vocab_size,
             hidden_size,
-            dropout_prob: 0.1,
         })
     }
 

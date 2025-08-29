@@ -1,10 +1,15 @@
 use ds_r1_rs::inference::engine::InferenceEngine;
+
 use ds_r1_rs::inference::reasoning::{
     ReasoningAnalysis, ReasoningSection, StructuredReasoningOutput,
 };
 use ds_r1_rs::training::data::SyntheticDataGenerator;
 use ds_r1_rs::training::trainer::BasicTrainer;
+use ds_r1_rs::utils::checkpoint::{
+    LoadOptions, SaveOptions, load_weights_json_with_options, save_weights_json_with_options,
+};
 use ds_r1_rs::utils::evaluation::EvaluationHarness;
+
 use ds_r1_rs::{DeepSeekR1Model, ModelConfig};
 use std::env;
 
@@ -27,6 +32,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  generate  - Generate text from a prompt");
         println!("  eval      - Run reasoning benchmarks");
         println!("  train     - Run micro supervised training loop");
+        println!("  save-weights - Save current model weights to a JSON checkpoint");
+        println!(
+            "  load-weights - Load weights from JSON checkpoint and (optionally) generate deterministically"
+        );
         println!("  tokenize  - Encode text into token IDs");
         println!("  detokenize - Decode token IDs into text");
         println!();
@@ -36,6 +45,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  cargo run -- generate \"Explain Rust ownership\"");
         println!("  cargo run -- eval");
         println!("  cargo run -- train --steps 50");
+        println!("  cargo run -- save-weights ckpt.json");
+        println!("  cargo run -- save-weights ckpt.json --include lm_head --exclude embeddings");
+        println!("  cargo run -- save-weights ckpt-small.json --demo-small");
+        println!("  cargo run -- load-weights ckpt.json \"Explain Rust ownership\"");
+        println!(
+            "  cargo run -- load-weights ckpt.json --allow-missing --include lm_head \"Explain Rust ownership\""
+        );
         println!("  cargo run -- tokenize \"Hello <think>plan</think>\"");
         println!("  cargo run -- detokenize 2,262,267,3");
         println!("  cargo run --example config_demo");
@@ -234,6 +250,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let model = DeepSeekR1Model::new(config.clone())?;
             let mut engine = InferenceEngine::new(model)?;
             let harness = EvaluationHarness::new();
+            let json_mode = args.iter().any(|a| a == "--json");
+            let mut all_results: Vec<ds_r1_rs::utils::BenchmarkResults> = Vec::new();
 
             for b in harness.get_benchmarks() {
                 let mut infer =
@@ -254,22 +272,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 match harness.evaluate_comprehensive(&b.name, &mut infer) {
                     Ok(results) => {
-                        println!("Benchmark: {}", results.benchmark_name);
-                        println!("  Total problems: {}", results.total_problems);
-                        println!("  Solved correctly: {}", results.solved_correctly);
-                        println!(
-                            "  Avg overall quality: {:.2}",
-                            results.average_metrics.overall_quality
-                        );
-                        println!(
-                            "  Tokens/sec: {:.2}",
-                            results.performance_metrics.tokens_per_second
-                        );
-                        println!();
+                        if json_mode {
+                            all_results.push(results);
+                        } else {
+                            println!("Benchmark: {}", results.benchmark_name);
+                            println!("  Total problems: {}", results.total_problems);
+                            println!("  Solved correctly: {}", results.solved_correctly);
+                            println!(
+                                "  Avg overall quality: {:.2}",
+                                results.average_metrics.overall_quality
+                            );
+                            println!(
+                                "  Tokens/sec: {:.2}",
+                                results.performance_metrics.tokens_per_second
+                            );
+                            println!();
+                        }
                     }
                     Err(e) => {
                         println!("Evaluation failed for {}: {}", b.name, e);
                     }
+                }
+            }
+            if json_mode {
+                match serde_json::to_string_pretty(&all_results) {
+                    Ok(s) => println!("{}", s),
+                    Err(e) => println!("Failed to serialize results to JSON: {}", e),
                 }
             }
         }
@@ -335,9 +363,197 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 last_loss = Some(metrics.loss);
             }
         }
+        "save-weights" => {
+            if args.len() < 3 {
+                println!(
+                    "Usage: {} save-weights <path.json> [--include PREFIX]* [--exclude PREFIX]* [--demo-small]",
+                    args[0]
+                );
+                println!("Examples:");
+                println!(
+                    "  {} save-weights ckpt.json --include lm_head --exclude embeddings",
+                    args[0]
+                );
+                println!("  {} save-weights ckpt-small.json --demo-small", args[0]);
+                return Ok(());
+            }
+            let path = &args[2];
+
+            // Parse optional flags
+            let mut include: Vec<String> = Vec::new();
+            let mut exclude: Vec<String> = Vec::new();
+            let mut demo_small = false;
+            let mut idx = 3;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--include" if idx + 1 < args.len() => {
+                        include.push(args[idx + 1].clone());
+                        idx += 2;
+                    }
+                    "--exclude" if idx + 1 < args.len() => {
+                        exclude.push(args[idx + 1].clone());
+                        idx += 2;
+                    }
+                    "--demo-small" => {
+                        demo_small = true;
+                        idx += 1;
+                    }
+                    _ => {
+                        idx += 1;
+                    }
+                }
+            }
+
+            // Build model config (optionally tiny for artifact demo)
+            let mut config = ModelConfig::default();
+            if demo_small {
+                config.vocab_size = 256;
+                config.hidden_size = 64; // divisible by default num_heads=8
+                config.num_layers = 2;
+                config.intermediate_size = 256;
+                config.max_seq_len = 128;
+            }
+
+            let mut model = DeepSeekR1Model::new(config)?;
+            let opts = SaveOptions {
+                include: if include.is_empty() {
+                    None
+                } else {
+                    Some(include)
+                },
+                exclude,
+            };
+
+            match save_weights_json_with_options(&mut model, path, &opts) {
+                Ok(()) => {
+                    println!("✅ Saved weights to {}", path);
+                    if demo_small {
+                        println!("Note: demo-small model used to keep artifact size small.");
+                    }
+                }
+                Err(e) => {
+                    println!("Failed to save weights: {}", e);
+                    return Err(e.into());
+                }
+            }
+        }
+        "load-weights" => {
+            if args.len() < 3 {
+                println!(
+                    "Usage: {} load-weights <path.json> [prompt...] [--include PREFIX]* [--exclude PREFIX]* [--allow-missing] [--allow-unknown] [--demo-small]",
+                    args[0]
+                );
+                println!("Examples:");
+                println!(
+                    "  {} load-weights ckpt.json --allow-missing --include lm_head \"Explain Rust ownership\"",
+                    args[0]
+                );
+                return Ok(());
+            }
+            let path = &args[2];
+
+            // Parse flags and collect prompt parts
+            let mut include: Vec<String> = Vec::new();
+            let mut exclude: Vec<String> = Vec::new();
+            let mut allow_missing = false;
+            let mut allow_unknown = false;
+            let mut demo_small = false;
+            let mut prompt_parts: Vec<String> = Vec::new();
+            let mut idx = 3;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--include" if idx + 1 < args.len() => {
+                        include.push(args[idx + 1].clone());
+                        idx += 2;
+                    }
+                    "--exclude" if idx + 1 < args.len() => {
+                        exclude.push(args[idx + 1].clone());
+                        idx += 2;
+                    }
+                    "--allow-missing" => {
+                        allow_missing = true;
+                        idx += 1;
+                    }
+                    "--allow-unknown" => {
+                        allow_unknown = true;
+                        idx += 1;
+                    }
+                    "--demo-small" => {
+                        demo_small = true;
+                        idx += 1;
+                    }
+                    _ => {
+                        // treat as part of the prompt
+                        prompt_parts.push(args[idx].clone());
+                        idx += 1;
+                    }
+                }
+            }
+
+            // Build model config (optionally tiny if artifact was saved with demo-small)
+            let mut config = ModelConfig::default();
+            if demo_small {
+                config.vocab_size = 256;
+                config.hidden_size = 64;
+                config.num_layers = 2;
+                config.intermediate_size = 256;
+                config.max_seq_len = 128;
+            }
+
+            let mut model = DeepSeekR1Model::new(config.clone())?;
+            let opts = LoadOptions {
+                allow_missing,
+                allow_unknown,
+                include: if include.is_empty() {
+                    None
+                } else {
+                    Some(include)
+                },
+                exclude,
+            };
+
+            match load_weights_json_with_options(&mut model, path, &opts) {
+                Ok(()) => {
+                    println!("✅ Loaded weights from {}", path);
+                    if !prompt_parts.is_empty() {
+                        let prompt = prompt_parts.join(" ");
+                        let mut engine = InferenceEngine::new(model)?;
+                        let mut cfg = engine.generation_config().clone();
+                        cfg.temperature = 0.0; // greedy sampling for determinism
+                        match engine.generate_text_with_config(&prompt, &cfg) {
+                            Ok(output) => {
+                                println!("Generated (deterministic):");
+                                println!("{}", output.text);
+                                println!(
+                                    "Tokens generated: {}  Time: {} ms  Tokens/sec: {:.2}",
+                                    output.tokens_generated,
+                                    output.generation_time_ms,
+                                    output.tokens_per_second
+                                );
+                            }
+                            Err(e) => {
+                                println!("Generation failed: {}", e);
+                                return Err(e.into());
+                            }
+                        }
+                    } else {
+                        println!(
+                            "Checkpoint loaded. Provide a prompt to generate deterministically:"
+                        );
+                        println!("  cargo run -- load-weights {} \"Your prompt here\"", path);
+                    }
+                }
+                Err(e) => {
+                    println!("Failed to load weights: {}", e);
+                    return Err(e.into());
+                }
+            }
+        }
         _ => {
             println!("Unknown command: {}", args[1]);
-            println!("Use 'config', 'version', 'test', 'generate', or 'eval'");
+            println!(
+                "Use 'config', 'version', 'test', 'generate', 'eval', 'save-weights', or 'load-weights'"
+            );
         }
     }
 

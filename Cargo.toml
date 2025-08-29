@@ -44,3 +44,5 @@ proptest = "1.0"
 
 # Benchmarking
 pprof = { version = "0.15", features = ["criterion", "flamegraph"] }
+assert_cmd = "2.0"
+predicates = "3.0"
