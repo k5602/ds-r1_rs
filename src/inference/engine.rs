@@ -128,7 +128,12 @@ impl InferenceEngine {
         )
     }
 
-    /// Generate text with streaming (returns tokens as they are generated)
+    /// Generate text with streaming (calls callback after each token is generated)
+    ///
+    /// The callback receives the incrementally generated text and returns:
+    /// - `Ok(true)` to continue generation
+    /// - `Ok(false)` to stop generation early
+    /// - `Err(_)` to stop generation with an error
     pub fn generate_text_streaming<F>(
         &mut self,
         prompt: &str,
@@ -138,21 +143,99 @@ impl InferenceEngine {
     where
         F: FnMut(&str) -> Result<bool>, // Returns false to stop generation
     {
-        // For now, implement as non-streaming but call callback with full result
-        // TODO: Implement true streaming in future iterations
-        let output = self.generate_text_with_config(prompt, config)?;
+        use crate::inference::generation::StopReason;
+        use crate::model::transformer::ModelKVCache;
+        use std::time::Instant;
 
-        // Call callback with the generated text
-        let should_continue = callback(&output.text)?;
-        if !should_continue {
-            return Ok(GenerationOutput::new(
-                output.text,
-                output.tokens_generated,
-                crate::inference::generation::StopReason::Error("Stopped by callback".to_string()),
-            ));
+        let start_time = Instant::now();
+
+        // Encode prompt and set up KV cache
+        let prompt_tokens = self.tokenizer.encode(prompt)?;
+
+        if self.generation_cache.model_cache.is_none() {
+            self.generation_cache.model_cache = Some(ModelKVCache::new(&self.model));
+            self.generation_cache.primed = true;
+        }
+        let model_cache = self.generation_cache.model_cache.as_mut().unwrap();
+
+        // Reset cache for new generation
+        model_cache.clear();
+
+        // Prime KV caches with all prompt tokens except the last one
+        if !prompt_tokens.is_empty() {
+            let prime_len = prompt_tokens.len().saturating_sub(1);
+            for &tok in &prompt_tokens[..prime_len] {
+                let _ = self.model.forward_next(model_cache, tok)?;
+            }
         }
 
-        Ok(output)
+        // Determine starting token
+        let mut last_token = if let Some(&t) = prompt_tokens.last() {
+            t
+        } else {
+            self.tokenizer.bos_token_id().unwrap_or(0)
+        };
+
+        let mut generated_tokens: Vec<u32> = Vec::new();
+        let mut generated_text = String::new();
+        let mut stop_reason = StopReason::MaxTokens;
+
+        for _ in 0..config.max_tokens {
+            // Generate next token
+            let logits = self.model.forward_next(model_cache, last_token)?;
+
+            // Sample next token
+            let next_token = if config.temperature <= 0.0 {
+                self.text_generator.sampler().sample_greedy(&logits)?
+            } else {
+                self.text_generator.sampler().sample_temperature(&logits)?
+            };
+
+            // Check for stop token
+            if config.stop_tokens.contains(&next_token) {
+                stop_reason = StopReason::StopToken;
+                break;
+            }
+
+            // Check for EOS
+            if let Ok(eos_id) = self.tokenizer.eos_token_id() {
+                if next_token == eos_id {
+                    stop_reason = StopReason::EndOfSequence;
+                    break;
+                }
+            }
+
+            // Decode and append new token
+            generated_tokens.push(next_token);
+            let token_text = self.tokenizer.decode(&[next_token])?;
+            generated_text.push_str(&token_text);
+
+            // Call streaming callback with current generated text
+            match callback(&generated_text) {
+                Ok(true) => {
+                    // Continue generation
+                    last_token = next_token;
+                }
+                Ok(false) => {
+                    // User requested stop
+                    stop_reason = StopReason::Error("Stopped by callback".to_string());
+                    break;
+                }
+                Err(e) => {
+                    stop_reason = StopReason::Error(e.to_string());
+                    break;
+                }
+            }
+        }
+
+        let elapsed = start_time.elapsed().as_millis() as u64;
+        self.generation_cache.total_generated_tokens += generated_tokens.len();
+        self.generation_cache.total_time_ms += elapsed;
+
+        Ok(
+            GenerationOutput::new(generated_text, generated_tokens.len(), stop_reason)
+                .with_time(elapsed),
+        )
     }
 
     /// Set generation configuration

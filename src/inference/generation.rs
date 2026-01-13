@@ -101,6 +101,11 @@ impl TextGenerator {
         }
     }
 
+    /// Get a reference to the sampler
+    pub fn sampler(&self) -> &Sampler {
+        &self.sampler
+    }
+
     /// Generate text using autoregressive sampling
     pub fn generate(
         &mut self,
