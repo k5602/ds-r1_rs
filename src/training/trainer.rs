@@ -568,7 +568,11 @@ impl RLTrainer {
     }
 
     /// Generate response with reasoning for RL training
+    ///
+    /// Generates a response and extracts reasoning chain from `<think>...</think>` tags
     fn generate_response_with_reasoning(&mut self, input: &str) -> Result<(String, Vec<String>)> {
+        use crate::inference::reasoning::ReasoningChainParser;
+
         // Tokenize input using RLTrainer's tokenizer
         let input_tokens = self.tokenize(input);
         // Forward pass through the model
@@ -581,8 +585,15 @@ impl RLTrainer {
             .map(|(idx, _)| idx)
             .unwrap_or(0) as u32;
         let response = self.decode(&[response_token]);
-        // Reasoning chain extraction (if available, otherwise empty)
-        let reasoning_chain = Vec::new(); // TODO: Extract reasoning chain from model output if supported
+
+        // Extract reasoning chain from response using ReasoningChainParser
+        // Parser looks for <think>...</think> tags in the response text
+        let mut parser = ReasoningChainParser::new(0, 0); // Token IDs not used for text parsing
+        let reasoning_chain = match parser.parse(&response) {
+            Ok(parsed) => parsed.thinking_chain,
+            Err(_) => Vec::new(), // Fall back to empty if parsing fails
+        };
+
         Ok((response, reasoning_chain))
     }
 

@@ -403,7 +403,7 @@ impl TextGenerator {
     }
 }
 
-/// Cache for generation state (placeholder for future KV caching)
+/// Cache for generation state with KV caching support
 pub struct GenerationCache {
     pub model_cache: Option<ModelKVCache>,
     pub primed: bool,

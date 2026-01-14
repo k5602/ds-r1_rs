@@ -1128,14 +1128,11 @@ impl MathProblemSolver {
             }
         }
 
-        // Fallback for placeholder expressions
-        match expression {
-            "a + b" => Ok(10.0), // Placeholder result
-            "a - b" => Ok(5.0),  // Placeholder result
-            "a × b" => Ok(20.0), // Placeholder result
-            "a ÷ b" => Ok(2.0),  // Placeholder result
-            _ => Ok(42.0),       // Default placeholder
-        }
+        // Return error for expressions we cannot evaluate
+        Err(ModelError::Forward(format!(
+            "Cannot evaluate expression: '{}'",
+            expression
+        )))
     }
 
     /// Extract numerical answer from text with proper mathematical formatting
