@@ -45,12 +45,12 @@ chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
 # Testing framework
-criterion = { version = "0.7", features = ["html_reports"] }
-proptest = "1.0"
+criterion = { version = "0.8", features = ["html_reports"] }
+proptest = "1.9"
 
 # Benchmarking
 pprof = { version = "0.15", features = ["criterion", "flamegraph"] }
-assert_cmd = "2.0"
+assert_cmd = "2.1"
 predicates = "3.0"
 
 [[bench]]

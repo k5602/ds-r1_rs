@@ -101,6 +101,11 @@ impl TextGenerator {
         }
     }
 
+    /// Get a reference to the sampler
+    pub fn sampler(&self) -> &Sampler {
+        &self.sampler
+    }
+
     /// Generate text using autoregressive sampling
     pub fn generate(
         &mut self,
@@ -398,7 +403,7 @@ impl TextGenerator {
     }
 }
 
-/// Cache for generation state (placeholder for future KV caching)
+/// Cache for generation state with KV caching support
 pub struct GenerationCache {
     pub model_cache: Option<ModelKVCache>,
     pub primed: bool,

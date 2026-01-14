@@ -879,90 +879,129 @@ impl MathProblemSolver {
         Ok("x = ?".to_string()) // Default placeholder
     }
 
-    /// Solve simple linear equations
+    /// Solve linear equations of the form ax + b = cx + d
+    ///
+    /// Supports:
+    /// - Simple: x + 3 = 7, 2x = 10, x - 5 = 3
+    /// - Complex: 3x + 5 = 20, 2x - 4 = x + 6
+    /// - Mixed: -2x + 8 = 4, 5 - x = 3
     fn solve_simple_equation(&self, equation: &str) -> Result<String> {
         let eq = equation.to_lowercase().replace(" ", "");
 
-        // Handle specific known equations
-        if eq == "2x+5=13" {
-            return Ok("x = 4".to_string());
-        }
-        if eq == "x+3=7" {
-            return Ok("x = 4".to_string());
-        }
-        if eq == "3x=15" {
-            return Ok("x = 5".to_string());
-        }
-        if eq == "x-4=10" {
-            return Ok("x = 14".to_string());
-        }
-        if eq == "4x-8=12" {
-            return Ok("x = 5".to_string());
+        // Find the equals sign
+        let eq_pos = match eq.find('=') {
+            Some(pos) => pos,
+            None => {
+                return Err(ModelError::Forward(
+                    "No equals sign in equation".to_string(),
+                ));
+            }
+        };
+
+        let left = &eq[..eq_pos];
+        let right = &eq[eq_pos + 1..];
+
+        // Parse both sides into (coefficient of x, constant)
+        let (left_x_coeff, left_const) = self.parse_linear_side(left)?;
+        let (right_x_coeff, right_const) = self.parse_linear_side(right)?;
+
+        // Solve: left_x_coeff * x + left_const = right_x_coeff * x + right_const
+        // => (left_x_coeff - right_x_coeff) * x = right_const - left_const
+        let net_x_coeff = left_x_coeff - right_x_coeff;
+        let net_const = right_const - left_const;
+
+        if net_x_coeff.abs() < 1e-10 {
+            if net_const.abs() < 1e-10 {
+                return Ok("x = any value (infinite solutions)".to_string());
+            } else {
+                return Err(ModelError::Forward(
+                    "No solution (contradiction)".to_string(),
+                ));
+            }
         }
 
-        // Try to parse and solve general linear equations
-        if let Some(eq_pos) = eq.find('=') {
-            let left = &eq[..eq_pos];
-            let right = &eq[eq_pos + 1..];
+        let x_value = net_const / net_x_coeff;
 
-            if let Ok(right_val) = right.parse::<f64>() {
-                // Handle x + constant = value
-                if let Some(rest) = left.strip_prefix("x+") {
-                    if let Ok(constant) = rest.parse::<f64>() {
-                        let x_value = right_val - constant;
-                        return Ok(format!("x = {}", x_value));
-                    }
-                }
-                // Handle x - constant = value
-                else if let Some(rest) = left.strip_prefix("x-") {
-                    if let Ok(constant) = rest.parse::<f64>() {
-                        let x_value = right_val + constant;
-                        return Ok(format!("x = {}", x_value));
-                    }
-                }
-                // Handle coefficient*x = value
-                else if let Some(coeff_str) = left.strip_suffix('x') {
-                    if let Ok(coefficient) = coeff_str.parse::<f64>()
-                        && coefficient != 0.0
-                    {
-                        let x_value = right_val / coefficient;
-                        return Ok(format!("x = {}", x_value));
-                    }
-                }
-                // Handle coefficient*x + constant = value
-                else if left.contains("x+") {
-                    if let Some(x_pos) = left.find("x+") {
-                        let coeff_str = &left[..x_pos];
-                        let const_str = &left[x_pos + 2..];
+        // Format result nicely
+        if (x_value - x_value.round()).abs() < 1e-10 {
+            Ok(format!("x = {}", x_value.round() as i64))
+        } else {
+            Ok(format!("x = {:.4}", x_value))
+        }
+    }
 
-                        if let (Ok(coefficient), Ok(constant)) =
-                            (coeff_str.parse::<f64>(), const_str.parse::<f64>())
-                            && coefficient != 0.0
-                        {
-                            let x_value = (right_val - constant) / coefficient;
-                            return Ok(format!("x = {}", x_value));
-                        }
-                    }
-                }
-                // Handle coefficient*x - constant = value
-                else if left.contains("x-")
-                    && let Some(x_pos) = left.find("x-")
-                {
-                    let coeff_str = &left[..x_pos];
-                    let const_str = &left[x_pos + 2..];
+    /// Parse one side of a linear equation into (x_coefficient, constant)
+    ///
+    /// Examples:
+    /// - "3x+5" => (3.0, 5.0)
+    /// - "-2x-7" => (-2.0, -7.0)
+    /// - "x" => (1.0, 0.0)
+    /// - "5" => (0.0, 5.0)
+    /// - "-x+3" => (-1.0, 3.0)
+    fn parse_linear_side(&self, expr: &str) -> Result<(f64, f64)> {
+        if expr.is_empty() {
+            return Ok((0.0, 0.0));
+        }
 
-                    if let (Ok(coefficient), Ok(constant)) =
-                        (coeff_str.parse::<f64>(), const_str.parse::<f64>())
-                        && coefficient != 0.0
-                    {
-                        let x_value = (right_val + constant) / coefficient;
-                        return Ok(format!("x = {}", x_value));
-                    }
+        let mut x_coeff = 0.0;
+        let mut constant = 0.0;
+
+        // Tokenize: split into terms, preserving signs
+        let terms = self.tokenize_expression(expr);
+
+        for term in terms {
+            let term = term.trim();
+            if term.is_empty() {
+                continue;
+            }
+
+            if term.contains('x') {
+                // This is an x term
+                let coeff_str = term.replace("x", "");
+                let coeff = if coeff_str.is_empty() || coeff_str == "+" {
+                    1.0
+                } else if coeff_str == "-" {
+                    -1.0
+                } else {
+                    coeff_str.parse::<f64>().unwrap_or(1.0)
+                };
+                x_coeff += coeff;
+            } else {
+                // This is a constant term
+                if let Ok(val) = term.parse::<f64>() {
+                    constant += val;
                 }
             }
         }
 
-        Ok("x = [solution]".to_string()) // Placeholder for complex equations
+        Ok((x_coeff, constant))
+    }
+
+    /// Tokenize expression into terms preserving signs
+    ///
+    /// "3x+5-2" => ["3x", "+5", "-2"]
+    /// "-x+7" => ["-x", "+7"]
+    fn tokenize_expression(&self, expr: &str) -> Vec<String> {
+        let mut terms = Vec::new();
+        let mut current_term = String::new();
+
+        for (i, ch) in expr.chars().enumerate() {
+            if (ch == '+' || ch == '-') && i > 0 {
+                // Start of new term
+                if !current_term.is_empty() {
+                    terms.push(current_term);
+                }
+                current_term = ch.to_string();
+            } else {
+                current_term.push(ch);
+            }
+        }
+
+        if !current_term.is_empty() {
+            terms.push(current_term);
+        }
+
+        terms
     }
 
     /// Verify algebraic solution
@@ -1128,14 +1167,11 @@ impl MathProblemSolver {
             }
         }
 
-        // Fallback for placeholder expressions
-        match expression {
-            "a + b" => Ok(10.0), // Placeholder result
-            "a - b" => Ok(5.0),  // Placeholder result
-            "a × b" => Ok(20.0), // Placeholder result
-            "a ÷ b" => Ok(2.0),  // Placeholder result
-            _ => Ok(42.0),       // Default placeholder
-        }
+        // Return error for expressions we cannot evaluate
+        Err(ModelError::Forward(format!(
+            "Cannot evaluate expression: '{}'",
+            expression
+        )))
     }
 
     /// Extract numerical answer from text with proper mathematical formatting

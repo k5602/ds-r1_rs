@@ -2,7 +2,6 @@
 //!
 //! Basic trainer implementations for supervised and reinforcement learning.
 
-#![allow(dead_code)]
 use crate::model::DeepSeekR1Model;
 use crate::training::data::{TrainingBatch, TrainingExample};
 use crate::training::loss::{CrossEntropyLoss, LossFunction, TrainingMetrics};
@@ -569,7 +568,11 @@ impl RLTrainer {
     }
 
     /// Generate response with reasoning for RL training
+    ///
+    /// Generates a response and extracts reasoning chain from `<think>...</think>` tags
     fn generate_response_with_reasoning(&mut self, input: &str) -> Result<(String, Vec<String>)> {
+        use crate::inference::reasoning::ReasoningChainParser;
+
         // Tokenize input using RLTrainer's tokenizer
         let input_tokens = self.tokenize(input);
         // Forward pass through the model
@@ -582,16 +585,38 @@ impl RLTrainer {
             .map(|(idx, _)| idx)
             .unwrap_or(0) as u32;
         let response = self.decode(&[response_token]);
-        // Reasoning chain extraction (if available, otherwise empty)
-        let reasoning_chain = Vec::new(); // TODO: Extract reasoning chain from model output if supported
+
+        // Extract reasoning chain from response using ReasoningChainParser
+        // Parser looks for <think>...</think> tags in the response text
+        let mut parser = ReasoningChainParser::new(0, 0); // Token IDs not used for text parsing
+        let reasoning_chain = match parser.parse(&response) {
+            Ok(parsed) => parsed.thinking_chain,
+            Err(_) => Vec::new(), // Fall back to empty if parsing fails
+        };
+
         Ok((response, reasoning_chain))
     }
 
     /// Compute action probabilities (simplified)
+    ///
+    /// Returns softmax probabilities over the last position's logits (vocab_size)
     fn compute_action_probabilities(&mut self, input: &str) -> Result<Vec<f32>> {
         // Use model logits for probability computation
         let input_tokens = self.tokenize(input);
-        let logits = self.model.forward(&input_tokens)?;
+        let all_logits = self.model.forward(&input_tokens)?;
+
+        // Extract only the last position's logits (vocab_size)
+        let vocab_size = self.vocab_size;
+        if all_logits.len() < vocab_size {
+            return Err(ModelError::Training(format!(
+                "Logits size {} is less than vocab_size {}",
+                all_logits.len(),
+                vocab_size
+            )));
+        }
+        let logits = &all_logits[all_logits.len() - vocab_size..];
+
+        // Compute softmax probabilities with numerical stability
         let max_logit = logits.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
         let exp_logits: Vec<f32> = logits.iter().map(|&x| (x - max_logit).exp()).collect();
         let sum_exp: f32 = exp_logits.iter().sum();
@@ -619,6 +644,9 @@ impl RLTrainer {
     }
 
     /// Perform an RL training step using REINFORCE
+    ///
+    /// Updates actual model parameters (LM head bias and weights) using policy gradients,
+    /// similar to BasicTrainer but using REINFORCE-style gradients.
     pub fn train_step(&mut self, batch: &TrainingBatch) -> Result<TrainingMetrics> {
         if batch.examples.is_empty() {
             return Err(ModelError::Training("Empty batch".to_string()));
@@ -629,6 +657,14 @@ impl RLTrainer {
         let mut correct_predictions = 0;
 
         for example in &batch.examples {
+            // Get hidden states for parameter updates
+            let input_tokens = self.tokenize(&example.input);
+            let hidden_states = self.model.forward_hidden(&input_tokens)?;
+            let last_hidden = hidden_states
+                .last()
+                .ok_or_else(|| ModelError::Training("No hidden states".to_string()))?
+                .clone();
+
             // Generate response with reasoning
             let (predicted_response, reasoning_chain) =
                 self.generate_response_with_reasoning(&example.input)?;
@@ -648,10 +684,8 @@ impl RLTrainer {
                 correct_predictions += 1;
             }
 
-            // Compute action probabilities
+            // Compute action probabilities and policy gradients
             let action_probs = self.compute_action_probabilities(&example.input)?;
-
-            // Compute policy gradient
             let rewards = vec![reward; action_probs.len()];
             let policy_grad = PolicyGradient::new(action_probs, rewards);
             let gradients = policy_grad.compute_gradients();
@@ -660,14 +694,8 @@ impl RLTrainer {
             let loss = -(reward - self.get_baseline());
             total_loss += loss;
 
-            // Update parameters using policy gradients
-            // In a real implementation, this would update actual model parameters
-            let mut dummy_params = vec![0.1; gradients.len()];
-            self.optimizer.step_parameter(
-                &format!("rl_params_{}", example.input.len()),
-                &mut dummy_params,
-                &gradients,
-            )?;
+            // Update actual model parameters using policy gradients
+            self.update_model_parameters_rl(&gradients, &last_hidden)?;
         }
 
         self.step_count += 1;
@@ -677,6 +705,47 @@ impl RLTrainer {
         let accuracy = correct_predictions as f32 / batch.examples.len() as f32;
 
         Ok(TrainingMetrics::new(avg_loss, accuracy, self.step_count))
+    }
+
+    /// Update model parameters using REINFORCE policy gradients
+    ///
+    /// Applies gradients to:
+    /// - LM head bias: directly uses policy gradient
+    /// - LM head weights: outer product of gradient and hidden state
+    fn update_model_parameters_rl(&mut self, gradients: &[f32], last_hidden: &[f32]) -> Result<()> {
+        let vocab_size = self.vocab_size;
+
+        // Validate gradient size
+        if gradients.len() != vocab_size {
+            return Err(ModelError::Training(format!(
+                "Gradient size {} doesn't match vocab size {}",
+                gradients.len(),
+                vocab_size
+            )));
+        }
+
+        // 1) Update LM head bias using policy gradients directly
+        {
+            let bias_slice = self.model.lm_head_bias_mut();
+            self.optimizer
+                .step_parameter("lm_head.bias", bias_slice, gradients)?;
+        }
+
+        // 2) Update LM head weights: dW[v] = gradient[v] * hidden
+        let _hidden_size = last_hidden.len();
+        for v in 0..vocab_size {
+            let g_v = gradients[v];
+            if g_v.abs() > 1e-8 {
+                // Compute gradient for this row: g_v * hidden
+                let row_grad: Vec<f32> = last_hidden.iter().map(|&h| g_v * h).collect();
+
+                let name = format!("lm_head.weight[{}]", v);
+                let row_slice = self.model.lm_head_row_mut(v)?;
+                self.optimizer.step_parameter(&name, row_slice, &row_grad)?;
+            }
+        }
+
+        Ok(())
     }
 
     /// Evaluate the RL policy on examples
