@@ -557,11 +557,33 @@ impl EvaluationHarness {
             .collect()
     }
 
-    /// Estimate memory usage (simplified for prototype)
+    /// Estimate memory usage
+    ///
+    /// On Linux, reads from /proc/self/statm for accurate RSS (Resident Set Size).
+    /// Falls back to a default estimate on other platforms.
     fn estimate_memory_usage(&self) -> f64 {
-        // Simplified memory estimation - in a real implementation,
-        // this would use system APIs to get actual memory usage
-        64.0 // Placeholder: 64MB
+        #[cfg(target_os = "linux")]
+        {
+            // Read RSS from /proc/self/statm (values are in pages)
+            if let Ok(statm) = std::fs::read_to_string("/proc/self/statm") {
+                let fields: Vec<&str> = statm.split_whitespace().collect();
+                if fields.len() >= 2 {
+                    // Second field is RSS in pages
+                    if let Ok(rss_pages) = fields[1].parse::<u64>() {
+                        // Convert pages to MB (page size is typically 4KB)
+                        let page_size = 4096u64;
+                        return (rss_pages * page_size) as f64 / (1024.0 * 1024.0);
+                    }
+                }
+            }
+            64.0 // Fallback if /proc/self/statm unavailable
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            // On non-Linux platforms, return a default estimate
+            64.0
+        }
     }
 
     /// Get available benchmarks
@@ -743,7 +765,7 @@ impl ReasoningEvaluator {
                         correct,
                         accuracy,
                         avg_reasoning_quality: avg_quality,
-                        avg_time: Duration::from_secs(0), // Placeholder for old method
+                        avg_time: Duration::from_secs(0), // Timing not tracked in evaluate_benchmark (use evaluate_comprehensive for timing)
                     },
                 )
             })
@@ -754,10 +776,10 @@ impl ReasoningEvaluator {
             total_problems: benchmark.problems.len(),
             solved_correctly,
             average_metrics,
-            performance_metrics: PerformanceMetrics::new(Duration::from_secs(0), &[], 0.0, 0, 0), // Placeholder for old method
+            performance_metrics: PerformanceMetrics::new(Duration::from_secs(0), &[], 0.0, 0, 0), // Timing requires evaluate_comprehensive
             category_breakdown,
             difficulty_breakdown,
-            detailed_results: Vec::new(), // Placeholder for old method
+            detailed_results: Vec::new(), // Per-problem details require evaluate_comprehensive
         })
     }
 
